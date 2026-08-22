@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "droid-core"
+version = "0.1.0"
+description = "Medical Droid Core Service"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "sqlmodel>=0.0.22",
+    "pydantic-settings>=2.5.0",
+    "pyjwt[crypto]>=2.9.0",
+    "passlib[bcrypt]>=1.7.4",
+    "bcrypt>=4.0.1",
+    "python-multipart>=0.0.12",
+    "gpiozero>=2.0.1",
+    "numpy>=1.26.0",
+    "opencv-python-headless>=4.10.0.84",
+    "websockets>=13.0",
+    "paho-mqtt>=2.1.0",
+    "httpx>=0.27.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.6.0"
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+pythonpath = ["."]
