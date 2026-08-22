@@ -1,26 +1,39 @@
-# Medical Assistive Droid (Plastic Nurse)
+# plastic-nurse
 
-An autonomous edge-robotics and assistive medical droid architecture designed for inpatient support, non-blocking hardware control, and vital measurements telemetry.
+A modular assistive medical droid built for telemetry ingestion, guided patient routines, and teleoperation without thread blocking or runaway hardware.
 
-## System Overview
+We inherited a legacy demo codebase built around blocking sleep loops and synthetic data. Instead of trying to patch a brittle prototype, we kept the physical chassis, pin mappings, and media assets, and rebuilt the entire software stack from the ground up.
 
-The Medical Droid monorepo is structured around a decoupled, three-tier architecture:
+---
 
-- **The Nervous System (`firmware/`):** Real-time sensor acquisition and filtering running on ESP32 microcontrollers, publishing filtered telemetry over MQTT.
-- **The Brain (`core/`):** Asynchronous Python/FastAPI service hosting the Hardware Abstraction Layer (HAL), SQLite persistence, JWT authentication, and WebSocket streams.
-- **The Face (`ui/`):** Touchscreen kiosk interface and remote monitoring application built with React, Vite, and TypeScript.
+## What It Does
 
-## Architecture Principles
+* Vitals Telemetry: Ingests indicative heart rate, SpO2, and single-lead ECG telemetry. Displays raw measurements and historical trends without automated medical diagnosis.
+* Patient Interaction: Fully offline speech-to-text and neural text-to-speech tied to an on-screen state machine for guided routines.
+* Motion and Hardware: Non-blocking teleoperation with watchdog auto-stop timers, ultrasonic obstacle interlocks, and an asynchronous door actuator state machine.
 
-- **Hardware Abstraction Layer:** Uniform abstract contracts for GPIO actuators, sensors, and camera with dual support for physical hardware and local simulation mock backends.
-- **Non-Blocking Execution:** Asynchronous state machines and auto-stop safety watchdogs preventing request thread blocking and hardware runaway conditions.
-- **Data Security:** Stateless JWT authentication and cryptographic password hashing guarding all system endpoints.
-- **Assistive Scope:** Designed for data collection, triage recording, and assistive interaction without autonomous medical diagnosis.
+---
 
-## Acknowledgments & Credits
+## System Architecture
 
-This project builds upon the foundational prototype, physical hardware wiring, and domain exploration initiated by the senior batch. Special gratitude and acknowledgment to:
+Split into three independent layers to allow parallel development without needing the physical Raspberry Pi:
 
-- **Original Project Authors & Senior Batch:** For building the initial hardware proof-of-concept, establishing sensor baseline designs, and assembling the original mechanical structure.
-- **Faculty Advisor & Supervising Professor:** For continuous guidance, technical mentorship, and institutional support throughout the development and rebuild of this system.
-- **Current Development & Maintenance Team:** For architecting the modular monorepo, Hardware Abstraction Layer, and asynchronous core services.
+* The Nervous System (`firmware/`): Embedded C++ on ESP32 using PlatformIO. Samples sensors at fixed intervals, applies basic digital filtering, and publishes JSON payloads over MQTT.
+* The Brain (`core/`): Asynchronous Python 3.11 and FastAPI service running on the Raspberry Pi. Houses the Hardware Abstraction Layer (with mock backends for local testing on Windows and Linux), SQLite storage via SQLModel, JWT security, and WebSocket channels.
+* The Face (`ui/`): Touchscreen interface built with React, Vite, and TypeScript. Runs in full-screen Chromium kiosk mode with touch-first controls.
+
+---
+
+## Core Rules
+
+1. Assistive, Not Diagnostic: Hobby sensors are not calibrated clinical instruments. The UI displays readings as indicative records and prompts users to consult healthcare professionals.
+2. Hardware Abstraction: All code interacting with GPIO, cameras, or motors must route through a mock backend so the entire stack can be tested locally without physical hardware.
+3. Non-Blocking Event Loop: Any operation running longer than 200 ms must execute in a background task and stream status updates over WebSockets.
+
+---
+
+## Credits & Acknowledgments
+
+* Original Prototype: Gautam (Senior Lead) and `[Senior Contributor Placeholder]` for the initial chassis construction, baseline wiring, and early proof of concept.
+* Faculty Mentorship: `[Prof. Name Placeholder]`, `[Department / Lab Placeholder]` for project guidance and lab support.
+* Current Maintainers: Anirudh and `[Collaborator Placeholder]` (Rebuild architecture, async core, firmware, and UI).
