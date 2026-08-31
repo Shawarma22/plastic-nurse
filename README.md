@@ -34,6 +34,6 @@ Split into three independent layers to allow parallel development without needin
 
 ## Credits & Acknowledgments
 
-* Original Prototype: Gautam (Senior Lead) and `[Senior Contributor Placeholder]` for the initial chassis construction, baseline wiring, and early proof of concept.
-* Faculty Mentorship: `[Prof. Name Placeholder]`, `[Department / Lab Placeholder]` for project guidance and lab support.
-* Current Maintainers: Anirudh and `[Collaborator Placeholder]` (Rebuild architecture, async core, firmware, and UI).
+* Original Prototype: Gautam (Senior Lead) and `palceholdr` for the initial chassis construction, baseline wiring, and early proof of concept.
+* Faculty Mentorship: `place`, `holderlaplace` for project guidance and lab support.
+* Current Maintainers: Anirudh Ramasubramanian and Irfan Ul Haq (Rebuild architecture, async core, firmware, and UI).
