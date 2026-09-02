@@ -6,6 +6,7 @@ from sqlmodel import Session, select
 from app.db.session import get_session
 from app.db.models import Session as DBSession, Vital, Event
 from app.auth.deps import get_current_user
+from app.services.ws_manager import ws_manager
 
 router = APIRouter(prefix="/api/v1/vitals", tags=["vitals"])
 
@@ -89,7 +90,7 @@ def list_sessions(
     ]
 
 @router.post("/records", response_model=VitalResponse, status_code=status.HTTP_201_CREATED)
-def record_vitals(
+async def record_vitals(
     payload: VitalCreate,
     session: Session = Depends(get_session),
     current_user: Dict[str, Any] = Depends(get_current_user)
@@ -105,6 +106,15 @@ def record_vitals(
     session.add(vital)
     session.commit()
     session.refresh(vital)
+
+    await ws_manager.broadcast_telemetry({
+        "type": "vital_reading",
+        "session_uid": vital.session_uid,
+        "heart_rate": vital.heart_rate,
+        "spo2": vital.spo2,
+        "confidence": vital.confidence,
+        "is_calibrated": vital.is_calibrated
+    })
 
     return VitalResponse(
         id=vital.id or 0,
@@ -135,7 +145,7 @@ def get_vitals_by_session(
     ]
 
 @router.post("/events", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
-def record_event(
+async def record_event(
     payload: EventCreate,
     session: Session = Depends(get_session),
     current_user: Dict[str, Any] = Depends(get_current_user)
@@ -148,6 +158,13 @@ def record_event(
     session.add(event)
     session.commit()
     session.refresh(event)
+
+    await ws_manager.broadcast_state({
+        "type": "system_event",
+        "event_type": event.event_type,
+        "session_uid": event.session_uid,
+        "payload": event.payload
+    })
 
     return EventResponse(
         id=event.id or 0,

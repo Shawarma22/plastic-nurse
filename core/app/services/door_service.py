@@ -3,6 +3,7 @@ from enum import Enum
 from typing import Dict, Any, Optional
 from app.hal.base import BaseDoorActuator
 from app.hal.factory import get_door_actuator
+from app.services.ws_manager import ws_manager
 from app.logger import logger
 
 class DoorState(str, Enum):
@@ -26,6 +27,7 @@ class DoorService:
             if self._transition_task and not self._transition_task.done():
                 self._transition_task.cancel()
             self.state = DoorState.OPENING
+            await ws_manager.broadcast_state({"door_state": self.state.value})
             self._transition_task = asyncio.create_task(self._run_open_cycle())
             return self.get_status()
 
@@ -36,6 +38,7 @@ class DoorService:
             if self._transition_task and not self._transition_task.done():
                 self._transition_task.cancel()
             self.state = DoorState.CLOSING
+            await ws_manager.broadcast_state({"door_state": self.state.value})
             self._transition_task = asyncio.create_task(self._run_close_cycle())
             return self.get_status()
 
@@ -48,6 +51,7 @@ class DoorService:
                 self.state = DoorState.OPEN
             elif self.state == DoorState.CLOSING:
                 self.state = DoorState.CLOSED
+            await ws_manager.broadcast_state({"door_state": self.state.value})
             return self.get_status()
 
     async def _run_open_cycle(self) -> None:
@@ -63,6 +67,7 @@ class DoorService:
                     break
             await self.actuator.stop()
             self.state = DoorState.OPEN
+            await ws_manager.broadcast_state({"door_state": self.state.value})
             logger.info("Door reached OPEN state")
         except asyncio.CancelledError:
             await self.actuator.stop()
@@ -70,6 +75,7 @@ class DoorService:
             logger.error(f"Door open failure: {e}")
             await self.actuator.stop()
             self.state = DoorState.ERROR
+            await ws_manager.broadcast_state({"door_state": self.state.value})
 
     async def _run_close_cycle(self) -> None:
         try:
@@ -84,6 +90,7 @@ class DoorService:
                     break
             await self.actuator.stop()
             self.state = DoorState.CLOSED
+            await ws_manager.broadcast_state({"door_state": self.state.value})
             logger.info("Door reached CLOSED state")
         except asyncio.CancelledError:
             await self.actuator.stop()
@@ -91,6 +98,7 @@ class DoorService:
             logger.error(f"Door close failure: {e}")
             await self.actuator.stop()
             self.state = DoorState.ERROR
+            await ws_manager.broadcast_state({"door_state": self.state.value})
 
     def get_status(self) -> Dict[str, Any]:
         return {

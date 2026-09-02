@@ -1,17 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import StreamingResponse, Response
-from fastapi.security import OAuth2PasswordBearer
 from typing import Optional
-from app.services.camera_service import camera_service
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response, StreamingResponse
+from fastapi.security import OAuth2PasswordBearer
 from app.auth.security import decode_access_token
+from app.services.camera_service import camera_service
 
 router = APIRouter(prefix="/api/v1/camera", tags=["camera"])
 
-# auto_error=False so a missing Authorization header falls through to the
-# ?token= query param below, instead of the shared oauth2_scheme's default
-# auto_error=True 401'ing before that fallback ever runs. <img>/<video> tags
-# can't set an Authorization header, so the query param is the only way
-# they can authenticate against this endpoint.
 camera_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
 def verify_camera_auth(
