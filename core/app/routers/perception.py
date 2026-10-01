@@ -6,6 +6,8 @@ from app.auth.deps import get_current_user
 from app.perception.service import perception_service
 from app.perception.stt import VoskSpeechRecognizer
 from app.perception.audio import MockAudioSource
+from app.perception.intents import intent_parser
+from app.perception.intent_dispatcher import intent_dispatcher
 from app.services.camera_service import camera_service
 from app.services.ws_manager import ws_manager
 
@@ -17,6 +19,10 @@ audio_source = MockAudioSource()
 class TranscribeRequest(BaseModel):
     audio_base64: Optional[str] = None
     simulate_phrase: Optional[str] = None
+
+class IntentParseRequest(BaseModel):
+    text: str
+    auto_dispatch: bool = False
 
 @router.get("/status")
 def get_perception_status(
@@ -69,3 +75,20 @@ async def transcribe_audio_chunk(
             "is_final": res.is_final
         })
     return payload
+
+@router.post("/intent/parse")
+async def parse_and_dispatch_intent(
+    request: IntentParseRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
+    parsed = intent_parser.parse(request.text)
+    out: Dict[str, Any] = {
+        "parsed": parsed.to_dict(),
+        "dispatched": False,
+        "dispatch_result": None
+    }
+    if request.auto_dispatch and parsed.intent.value != "unknown":
+        dispatch_result = await intent_dispatcher.dispatch(parsed)
+        out["dispatched"] = True
+        out["dispatch_result"] = dispatch_result
+    return out
