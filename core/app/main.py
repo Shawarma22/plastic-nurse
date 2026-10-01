@@ -9,7 +9,7 @@ from app.db.models import User
 from app.auth.security import get_password_hash
 from app.services.camera_service import camera_service
 from app.services.job_queue import job_queue_service
-from app.routers import auth, motors, door, camera, vitals, jobs, ws
+from app.routers import auth, motors, door, camera, vitals, jobs, ws, perception
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -57,6 +57,7 @@ app.include_router(camera.router)
 app.include_router(vitals.router)
 app.include_router(jobs.router)
 app.include_router(ws.router)
+app.include_router(perception.router)
 
 @app.get("/health", tags=["system"])
 def health_check():
