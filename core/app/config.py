@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     PIN_DOOR_LIMIT_OPEN: int = 5
     PIN_DOOR_LIMIT_CLOSED: int = 6
     PIN_ESTOP: int = 26
+    VOSK_MODEL_PATH: str = "models/vosk"
+    AUDIO_SAMPLE_RATE: int = 16000
 
     model_config = SettingsConfigDict(
         env_file=".env",
