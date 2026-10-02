@@ -17,6 +17,7 @@ class PerceptionCoordinator:
         self.ws_manager = ws_mgr or ws_manager
         self.history: List[LifecycleTransitionEvent] = []
         self._listeners: List[Callable[[LifecycleTransitionEvent], None]] = []
+        self._command_audio_buffer = bytearray()
         self._lock = asyncio.Lock()
 
     def add_listener(self, callback: Callable[[LifecycleTransitionEvent], None]) -> None:
@@ -24,6 +25,35 @@ class PerceptionCoordinator:
 
     def get_state(self) -> PerceptionLifecycleState:
         return self.state
+
+    def get_command_audio(self) -> bytes:
+        return bytes(self._command_audio_buffer)
+
+    def clear_command_audio(self) -> None:
+        self._command_audio_buffer.clear()
+
+    async def feed_audio_chunk(self, chunk: bytes) -> Optional[LifecycleTransitionEvent]:
+        if not chunk:
+            return None
+
+        if self.state == PerceptionLifecycleState.IDLE:
+            res = self.wake_detector.process_audio_chunk(chunk)
+            if res.detected:
+                self.clear_command_audio()
+                event = await self.transition_to(
+                    PerceptionLifecycleState.WAKE_DETECTED,
+                    trigger="wake_word_detected",
+                    metadata={"wake_word": res.wake_word, "confidence": res.confidence}
+                )
+                await self.transition_to(
+                    PerceptionLifecycleState.LISTENING,
+                    trigger="auto_listen_start"
+                )
+                return event
+        elif self.state == PerceptionLifecycleState.LISTENING:
+            self._command_audio_buffer.extend(chunk)
+
+        return None
 
     async def transition_to(
         self,
@@ -61,6 +91,7 @@ class PerceptionCoordinator:
         async with self._lock:
             self.state = PerceptionLifecycleState.IDLE
             self.wake_detector.reset()
+            self.clear_command_audio()
             logger.info("Perception coordinator reset to IDLE")
 
 coordinator = PerceptionCoordinator()
