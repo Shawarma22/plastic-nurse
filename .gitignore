@@ -32,3 +32,10 @@ droid.db
 node_modules/
 dist/
 .pio/
+.claude/
+.cursor/
+.gemini/
+.agent/
+.agents/
+.idea/
+.vscode/
