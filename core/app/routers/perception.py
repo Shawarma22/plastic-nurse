@@ -8,6 +8,8 @@ from app.perception.stt import VoskSpeechRecognizer
 from app.perception.audio import MockAudioSource
 from app.perception.intents import intent_parser
 from app.perception.intent_dispatcher import intent_dispatcher
+from app.perception.coordinator import coordinator
+from app.perception.wake_state import PerceptionLifecycleState
 from app.services.camera_service import camera_service
 from app.services.ws_manager import ws_manager
 
@@ -23,6 +25,9 @@ class TranscribeRequest(BaseModel):
 class IntentParseRequest(BaseModel):
     text: str
     auto_dispatch: bool = False
+
+class CommandExecuteRequest(BaseModel):
+    text: str
 
 @router.get("/status")
 def get_perception_status(
@@ -92,3 +97,42 @@ async def parse_and_dispatch_intent(
         out["dispatched"] = True
         out["dispatch_result"] = dispatch_result
     return out
+
+@router.get("/coordinator/status")
+def get_coordinator_status(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
+    return {
+        "state": coordinator.get_state().value,
+        "history": [e.to_dict() for e in coordinator.history]
+    }
+
+@router.post("/coordinator/reset")
+async def reset_coordinator(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
+    await coordinator.reset()
+    return {"status": "reset", "state": coordinator.get_state().value}
+
+@router.post("/coordinator/trigger-wake")
+async def trigger_wake_word(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
+    await coordinator.transition_to(
+        PerceptionLifecycleState.WAKE_DETECTED,
+        trigger="manual_trigger",
+        metadata={"wake_word": "hey droid", "confidence": 1.0}
+    )
+    await coordinator.transition_to(
+        PerceptionLifecycleState.LISTENING,
+        trigger="manual_listening_start"
+    )
+    return {"status": "triggered", "state": coordinator.get_state().value}
+
+@router.post("/coordinator/execute-command")
+async def execute_coordinator_command(
+    request: CommandExecuteRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
+    result = await coordinator.finish_listening_and_dispatch(override_text=request.text)
+    return result
