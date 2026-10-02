@@ -2,7 +2,7 @@ from typing import Optional
 
 class AudioRingBuffer:
     def __init__(self, capacity_bytes: int = 96000) -> None:
-        self.capacity = max(1024, capacity_bytes)
+        self.capacity = max(1, capacity_bytes)
         self._buffer = bytearray(self.capacity)
         self._write_pos = 0
         self._size = 0
