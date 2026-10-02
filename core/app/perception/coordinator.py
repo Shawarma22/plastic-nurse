@@ -3,6 +3,9 @@ from typing import Dict, Any, Optional, List, Callable
 from app.perception.wake_state import PerceptionLifecycleState, LifecycleTransitionEvent
 from app.perception.wake_base import BaseWakeWordDetector
 from app.perception.keyword_spotter import KeywordSpotter
+from app.perception.stt import VoskSpeechRecognizer, BaseSpeechRecognizer
+from app.perception.intents import intent_parser, RuleBasedIntentParser
+from app.perception.intent_dispatcher import intent_dispatcher, IntentDispatcher
 from app.services.ws_manager import ws_manager, WebSocketManager
 from app.logger import logger
 
@@ -10,10 +13,16 @@ class PerceptionCoordinator:
     def __init__(
         self,
         wake_detector: Optional[BaseWakeWordDetector] = None,
+        stt: Optional[BaseSpeechRecognizer] = None,
+        parser: Optional[RuleBasedIntentParser] = None,
+        dispatcher: Optional[IntentDispatcher] = None,
         ws_mgr: Optional[WebSocketManager] = None
     ) -> None:
         self.state = PerceptionLifecycleState.IDLE
         self.wake_detector = wake_detector or KeywordSpotter()
+        self.stt = stt or VoskSpeechRecognizer()
+        self.intent_parser = parser or intent_parser
+        self.intent_dispatcher = dispatcher or intent_dispatcher
         self.ws_manager = ws_mgr or ws_manager
         self.history: List[LifecycleTransitionEvent] = []
         self._listeners: List[Callable[[LifecycleTransitionEvent], None]] = []
@@ -54,6 +63,48 @@ class PerceptionCoordinator:
             self._command_audio_buffer.extend(chunk)
 
         return None
+
+    async def finish_listening_and_dispatch(
+        self,
+        override_text: Optional[str] = None
+    ) -> Dict[str, Any]:
+        await self.transition_to(
+            PerceptionLifecycleState.PARSING_INTENT,
+            trigger="speech_end"
+        )
+        if override_text:
+            transcript = override_text
+        else:
+            audio = self.get_command_audio()
+            res = self.stt.accept_waveform(audio) if audio else None
+            if not res or not res.transcript:
+                res = self.stt.get_final_result()
+            transcript = res.transcript if res else ""
+
+        parsed = self.intent_parser.parse(transcript)
+        await self.transition_to(
+            PerceptionLifecycleState.EXECUTING_ACTION,
+            trigger="intent_parsed",
+            metadata={"intent": parsed.intent.value, "transcript": transcript}
+        )
+
+        dispatch_res = await self.intent_dispatcher.dispatch(parsed)
+
+        await self.transition_to(
+            PerceptionLifecycleState.COOLDOWN,
+            trigger="action_completed"
+        )
+        await self.transition_to(
+            PerceptionLifecycleState.IDLE,
+            trigger="cooldown_finished"
+        )
+        self.clear_command_audio()
+
+        return {
+            "transcript": transcript,
+            "parsed": parsed.to_dict(),
+            "dispatch_result": dispatch_res
+        }
 
     async def transition_to(
         self,
