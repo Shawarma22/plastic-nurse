@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from app.hal.firmware_sim import FirmwareSimulator
 
 
@@ -77,3 +78,49 @@ def test_streaming_packets():
         data = json.loads(line)
         seqs.append(data["seq"])
     assert seqs == [1, 2, 3, 4, 5]
+
+
+def test_firmware_sim_json_contract():
+    sim = FirmwareSimulator()
+    packet = sim.generate_packet()
+    serialized = sim.serialize_packet(packet)
+    decoded = json.loads(serialized)
+
+    expected_keys = {"seq", "ts", "ppg", "ecg", "bat", "status"}
+    assert set(decoded.keys()) == expected_keys
+
+    expected_ppg_keys = {"ir", "red", "bpm", "spo2", "conf", "finger"}
+    assert set(decoded["ppg"].keys()) == expected_ppg_keys
+
+    expected_ecg_keys = {"raw", "lead_off"}
+    assert set(decoded["ecg"].keys()) == expected_ecg_keys
+
+
+def test_firmware_file_integrity():
+    repo_root = Path(__file__).resolve().parents[2]
+    firmware_dir = repo_root / "firmware"
+    assert firmware_dir.exists()
+
+    required_headers = [
+        "pinout.h",
+        "config.h",
+        "tasks.h",
+        "i2c_bus.h",
+        "status_led.h",
+        "sensor_types.h",
+        "packet_serializer.h",
+    ]
+    for header in required_headers:
+        path = firmware_dir / "include" / header
+        assert path.exists()
+
+    required_src = [
+        "main.cpp",
+        "i2c_bus.cpp",
+        "status_led.cpp",
+        "heartbeat_task.cpp",
+        "packet_serializer.cpp",
+    ]
+    for src in required_src:
+        path = firmware_dir / "src" / src
+        assert path.exists()
