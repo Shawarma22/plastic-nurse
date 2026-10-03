@@ -1,11 +1,23 @@
 #include <Arduino.h>
 #include "config.h"
 #include "pinout.h"
+#include "status_led.h"
+#include "tasks.h"
 
 void setup() {
     Serial.begin(SERIAL_BAUD);
-    pinMode(PIN_LED_STATUS, OUTPUT);
-    digitalWrite(PIN_LED_STATUS, LOW);
+    initStatusLeds();
+    initSystemQueues();
+
+    xTaskCreatePinnedToCore(
+        taskHeartbeat,
+        "heartbeat",
+        STACK_SIZE_HEARTBEAT,
+        nullptr,
+        PRIORITY_HEARTBEAT,
+        &xTaskHeartbeat,
+        1
+    );
 }
 
 void loop() {
