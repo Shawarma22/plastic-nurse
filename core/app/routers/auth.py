@@ -5,7 +5,12 @@ from sqlmodel import Session, select
 from pydantic import BaseModel
 from app.db.session import get_session
 from app.db.models import User
-from app.auth.security import verify_password, get_password_hash, create_access_token
+from app.auth.security import (
+    verify_password,
+    get_password_hash,
+    create_access_token,
+    dummy_password_check,
+)
 from app.auth.deps import get_current_user, require_admin
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -37,7 +42,14 @@ def login(
     session: Session = Depends(get_session)
 ) -> TokenResponse:
     user = session.exec(select(User).where(User.username == form_data.username)).first()
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    if user is None:
+        dummy_password_check()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",

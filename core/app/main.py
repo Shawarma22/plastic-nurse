@@ -17,15 +17,27 @@ async def lifespan(app: FastAPI):
     with Session(engine) as session:
         admin_user = session.exec(select(User).where(User.username == "admin")).first()
         if not admin_user:
-            default_admin = User(
-                username="admin",
-                hashed_password=get_password_hash("admin123"),
-                role="admin",
-                is_active=True
-            )
-            session.add(default_admin)
-            session.commit()
-            logger.info("Created default administrator user")
+            initial_password = settings.INITIAL_ADMIN_PASSWORD
+            if initial_password is None:
+                if settings.DROID_ENV == "development":
+                    initial_password = "admin123"
+                    logger.warning(
+                        "Seeding default dev admin (admin/admin123); set INITIAL_ADMIN_PASSWORD to override"
+                    )
+                else:
+                    logger.info(
+                        "No admin user present and INITIAL_ADMIN_PASSWORD unset; skipping admin seed"
+                    )
+            if initial_password is not None:
+                default_admin = User(
+                    username="admin",
+                    hashed_password=get_password_hash(initial_password),
+                    role="admin",
+                    is_active=True
+                )
+                session.add(default_admin)
+                session.commit()
+                logger.info("Created administrator user 'admin'")
 
     camera_service.start()
     job_queue_service.start()
