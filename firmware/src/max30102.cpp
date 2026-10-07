@@ -28,6 +28,28 @@ uint8_t MAX30102::readPartID() {
     return readRegister8(REG_PART_ID);
 }
 
+void MAX30102::setup(
+    uint8_t powerLevel,
+    uint8_t sampleAverage,
+    uint8_t ledMode,
+    uint8_t sampleRate,
+    uint8_t pulseWidth,
+    uint8_t adcRange
+) {
+    writeRegister8(REG_FIFO_CONFIG, sampleAverage | 0x10);
+    writeRegister8(REG_MODE_CONFIG, ledMode);
+    writeRegister8(REG_SPO2_CONFIG, adcRange | sampleRate | pulseWidth);
+    setPulseAmplitudeRed(powerLevel);
+    setPulseAmplitudeIR(powerLevel);
+    clearFIFO();
+}
+
+void MAX30102::clearFIFO() {
+    writeRegister8(REG_FIFO_WR_PTR, 0);
+    writeRegister8(REG_OVF_COUNTER, 0);
+    writeRegister8(REG_FIFO_RD_PTR, 0);
+}
+
 void MAX30102::setPulseAmplitudeRed(uint8_t amplitude) {
     writeRegister8(REG_LED1_PA, amplitude);
 }
