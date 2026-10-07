@@ -249,4 +249,46 @@ private:
     float lastSpO2;
 };
 
+class PerfusionIndexEstimator {
+public:
+    PerfusionIndexEstimator() : lastPI(0.0f), lastConfidence(0.0f) {}
+
+    void update(float acAmplitude, float dcBaseline) {
+        if (dcBaseline < 1000.0f) {
+            lastPI = 0.0f;
+            lastConfidence = 0.0f;
+            return;
+        }
+
+        lastPI = (acAmplitude / dcBaseline) * 100.0f;
+
+        if (lastPI < 0.1f) {
+            lastConfidence = 0.2f;
+        } else if (lastPI < 0.3f) {
+            lastConfidence = 0.6f;
+        } else if (lastPI <= 5.0f) {
+            lastConfidence = 0.95f;
+        } else {
+            lastConfidence = 0.5f;
+        }
+    }
+
+    float getPI() const {
+        return lastPI;
+    }
+
+    float getConfidence() const {
+        return lastConfidence;
+    }
+
+    void reset() {
+        lastPI = 0.0f;
+        lastConfidence = 0.0f;
+    }
+
+private:
+    float lastPI;
+    float lastConfidence;
+};
+
 #endif
