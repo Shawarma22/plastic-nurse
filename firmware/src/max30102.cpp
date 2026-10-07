@@ -62,6 +62,47 @@ void MAX30102::setPulseAmplitudeProximity(uint8_t amplitude) {
     writeRegister8(REG_MULTI_LED_CTRL1, amplitude);
 }
 
+uint8_t MAX30102::readFIFO(uint32_t* redBuffer, uint32_t* irBuffer, uint8_t maxSamples) {
+    uint8_t writePtr = readRegister8(REG_FIFO_WR_PTR);
+    uint8_t readPtr = readRegister8(REG_FIFO_RD_PTR);
+
+    int8_t numSamples = static_cast<int8_t>(writePtr - readPtr);
+    if (numSamples < 0) {
+        numSamples += 32;
+    }
+
+    if (numSamples == 0) {
+        return 0;
+    }
+
+    if (numSamples > maxSamples) {
+        numSamples = maxSamples;
+    }
+
+    uint8_t bytesToRead = static_cast<uint8_t>(numSamples * 6);
+    uint8_t rawBytes[192];
+    uint8_t bytesReceived = readRegisterBytes(REG_FIFO_DATA, rawBytes, bytesToRead);
+
+    uint8_t validSamples = bytesReceived / 6;
+    for (uint8_t i = 0; i < validSamples; ++i) {
+        uint8_t offset = i * 6;
+        uint32_t red = ((static_cast<uint32_t>(rawBytes[offset]) << 16) |
+                        (static_cast<uint32_t>(rawBytes[offset + 1]) << 8) |
+                        static_cast<uint32_t>(rawBytes[offset + 2])) & 0x03FFFF;
+        uint32_t ir = ((static_cast<uint32_t>(rawBytes[offset + 3]) << 16) |
+                       (static_cast<uint32_t>(rawBytes[offset + 4]) << 8) |
+                       static_cast<uint32_t>(rawBytes[offset + 5])) & 0x03FFFF;
+        if (redBuffer != nullptr) {
+            redBuffer[i] = red;
+        }
+        if (irBuffer != nullptr) {
+            irBuffer[i] = ir;
+        }
+    }
+
+    return validSamples;
+}
+
 uint8_t MAX30102::readRegister8(uint8_t address) {
     Wire.beginTransmission(activeAddress);
     Wire.write(address);
