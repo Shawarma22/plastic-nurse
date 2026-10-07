@@ -212,4 +212,41 @@ private:
     float lastRatio;
 };
 
+class SpO2Estimator {
+public:
+    SpO2Estimator() : lastSpO2(0.0f) {}
+
+    float calculate(float ratio) {
+        if (ratio <= 0.2f || ratio >= 2.0f) {
+            lastSpO2 = 0.0f;
+            return 0.0f;
+        }
+
+        float spo2 = 104.0f - 17.0f * ratio;
+        if (spo2 > 100.0f) {
+            spo2 = 100.0f;
+        } else if (spo2 < 70.0f) {
+            spo2 = 70.0f;
+        }
+
+        if (lastSpO2 > 0.0f) {
+            lastSpO2 = 0.8f * lastSpO2 + 0.2f * spo2;
+        } else {
+            lastSpO2 = spo2;
+        }
+        return lastSpO2;
+    }
+
+    float getSpO2() const {
+        return lastSpO2;
+    }
+
+    void reset() {
+        lastSpO2 = 0.0f;
+    }
+
+private:
+    float lastSpO2;
+};
+
 #endif
