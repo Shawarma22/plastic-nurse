@@ -96,6 +96,20 @@ def test_firmware_sim_json_contract():
     assert set(decoded["ecg"].keys()) == expected_ecg_keys
 
 
+def test_synthetic_ppg_dsp_processing():
+    sim = FirmwareSimulator()
+    packets = [sim.generate_packet() for _ in range(50)]
+
+    for p in packets:
+        ppg = p["ppg"]
+        assert ppg["finger"] is True
+        assert ppg["ir"] >= 200000
+        assert ppg["red"] >= 200000
+        assert 60.0 <= ppg["bpm"] <= 90.0
+        assert 95.0 <= ppg["spo2"] <= 100.0
+        assert ppg["conf"] >= 0.90
+
+
 def test_firmware_file_integrity():
     repo_root = Path(__file__).resolve().parents[2]
     firmware_dir = repo_root / "firmware"
@@ -109,6 +123,9 @@ def test_firmware_file_integrity():
         "status_led.h",
         "sensor_types.h",
         "packet_serializer.h",
+        "max30102_regs.h",
+        "max30102.h",
+        "dsp_filters.h",
     ]
     for header in required_headers:
         path = firmware_dir / "include" / header
@@ -120,6 +137,9 @@ def test_firmware_file_integrity():
         "status_led.cpp",
         "heartbeat_task.cpp",
         "packet_serializer.cpp",
+        "max30102.cpp",
+        "dsp_filters.cpp",
+        "ppg_task.cpp",
     ]
     for src in required_src:
         path = firmware_dir / "src" / src
