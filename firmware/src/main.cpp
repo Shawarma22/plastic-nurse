@@ -18,6 +18,16 @@ void setup() {
         &xTaskHeartbeat,
         1
     );
+
+    xTaskCreatePinnedToCore(
+        taskSensors,
+        "sensors",
+        STACK_SIZE_SENSORS,
+        nullptr,
+        PRIORITY_SENSORS,
+        &xTaskSensors,
+        0
+    );
 }
 
 void loop() {
