@@ -291,4 +291,39 @@ private:
     float lastConfidence;
 };
 
+class FingerDetector {
+public:
+    FingerDetector(uint32_t threshold = 50000)
+        : threshold(threshold), isDetected(false), consecutiveCount(0) {}
+
+    bool update(uint32_t irRaw) {
+        if (irRaw > threshold) {
+            if (consecutiveCount < 5) {
+                consecutiveCount++;
+            }
+            if (consecutiveCount >= 5) {
+                isDetected = true;
+            }
+        } else {
+            consecutiveCount = 0;
+            isDetected = false;
+        }
+        return isDetected;
+    }
+
+    bool isFingerPresent() const {
+        return isDetected;
+    }
+
+    void reset() {
+        consecutiveCount = 0;
+        isDetected = false;
+    }
+
+private:
+    uint32_t threshold;
+    bool isDetected;
+    uint8_t consecutiveCount;
+};
+
 #endif
