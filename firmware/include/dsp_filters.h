@@ -123,4 +123,55 @@ private:
     float valleyValue;
 };
 
+template <uint8_t CAPACITY = 8>
+class HeartRateEstimator {
+public:
+    HeartRateEstimator(float sampleRateHz = 100.0f)
+        : sampleRateHz(sampleRateHz), index(0), count(0), lastBpm(0.0f) {
+        for (uint8_t i = 0; i < CAPACITY; ++i) {
+            intervals[i] = 0.0f;
+        }
+    }
+
+    void addInterval(uint16_t sampleCount) {
+        float intervalMs = (static_cast<float>(sampleCount) / sampleRateHz) * 1000.0f;
+        if (intervalMs < 300.0f || intervalMs > 2000.0f) {
+            return;
+        }
+
+        intervals[index] = intervalMs;
+        index = (index + 1) % CAPACITY;
+        if (count < CAPACITY) {
+            count++;
+        }
+
+        float sum = 0.0f;
+        for (uint8_t i = 0; i < count; ++i) {
+            sum += intervals[i];
+        }
+        float avgIntervalMs = sum / static_cast<float>(count);
+        lastBpm = 60000.0f / avgIntervalMs;
+    }
+
+    float getBPM() const {
+        return lastBpm;
+    }
+
+    void reset() {
+        index = 0;
+        count = 0;
+        lastBpm = 0.0f;
+        for (uint8_t i = 0; i < CAPACITY; ++i) {
+            intervals[i] = 0.0f;
+        }
+    }
+
+private:
+    float sampleRateHz;
+    float intervals[CAPACITY];
+    uint8_t index;
+    uint8_t count;
+    float lastBpm;
+};
+
 #endif
