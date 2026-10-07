@@ -174,4 +174,42 @@ private:
     float lastBpm;
 };
 
+class RatioCalculator {
+public:
+    RatioCalculator() : redAC(0.0f), redDC(1.0f), irAC(0.0f), irDC(1.0f), lastRatio(0.0f) {}
+
+    void update(float redACVal, float redDCVal, float irACVal, float irDCVal) {
+        redAC = (redACVal < 0.0f) ? -redACVal : redACVal;
+        irAC = (irACVal < 0.0f) ? -irACVal : irACVal;
+        redDC = (redDCVal > 1.0f) ? redDCVal : 1.0f;
+        irDC = (irDCVal > 1.0f) ? irDCVal : 1.0f;
+
+        float redNorm = redAC / redDC;
+        float irNorm = irAC / irDC;
+
+        if (irNorm > 0.0001f) {
+            lastRatio = redNorm / irNorm;
+        }
+    }
+
+    float getRatio() const {
+        return lastRatio;
+    }
+
+    void reset() {
+        redAC = 0.0f;
+        redDC = 1.0f;
+        irAC = 0.0f;
+        irDC = 1.0f;
+        lastRatio = 0.0f;
+    }
+
+private:
+    float redAC;
+    float redDC;
+    float irAC;
+    float irDC;
+    float lastRatio;
+};
+
 #endif
