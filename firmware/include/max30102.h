@@ -22,6 +22,7 @@ public:
     );
     void setPulseAmplitudeRed(uint8_t amplitude);
     void setPulseAmplitudeIR(uint8_t amplitude);
+    void setPulseAmplitudeProximity(uint8_t amplitude);
     void clearFIFO();
     uint8_t readFIFO(uint32_t* redBuffer, uint32_t* irBuffer, uint8_t maxSamples);
     uint8_t readRegister8(uint8_t address);

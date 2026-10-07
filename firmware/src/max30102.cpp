@@ -28,6 +28,18 @@ uint8_t MAX30102::readPartID() {
     return readRegister8(REG_PART_ID);
 }
 
+void MAX30102::setPulseAmplitudeRed(uint8_t amplitude) {
+    writeRegister8(REG_LED1_PA, amplitude);
+}
+
+void MAX30102::setPulseAmplitudeIR(uint8_t amplitude) {
+    writeRegister8(REG_LED2_PA, amplitude);
+}
+
+void MAX30102::setPulseAmplitudeProximity(uint8_t amplitude) {
+    writeRegister8(REG_MULTI_LED_CTRL1, amplitude);
+}
+
 uint8_t MAX30102::readRegister8(uint8_t address) {
     Wire.beginTransmission(activeAddress);
     Wire.write(address);
