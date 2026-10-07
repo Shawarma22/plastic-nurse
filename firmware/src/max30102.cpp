@@ -27,15 +27,18 @@ uint8_t MAX30102::readRegisterBytes(uint8_t address, uint8_t* buffer, uint8_t le
     return count;
 }
 
-void MAX30102::writeRegister8(uint8_t address, uint8_t data) {
+bool MAX30102::writeRegister8(uint8_t address, uint8_t data) {
     Wire.beginTransmission(activeAddress);
     Wire.write(address);
     Wire.write(data);
-    Wire.endTransmission();
+    if (Wire.endTransmission() != 0) {
+        return false;
+    }
+    return true;
 }
 
-void MAX30102::bitMask(uint8_t reg, uint8_t mask, uint8_t thing) {
+bool MAX30102::bitMask(uint8_t reg, uint8_t mask, uint8_t thing) {
     uint8_t original = readRegister8(reg);
     original &= mask;
-    writeRegister8(reg, original | thing);
+    return writeRegister8(reg, original | thing);
 }

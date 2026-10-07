@@ -26,8 +26,8 @@ public:
     uint8_t readFIFO(uint32_t* redBuffer, uint32_t* irBuffer, uint8_t maxSamples);
     uint8_t readRegister8(uint8_t address);
     uint8_t readRegisterBytes(uint8_t address, uint8_t* buffer, uint8_t length);
-    void writeRegister8(uint8_t address, uint8_t data);
-    void bitMask(uint8_t reg, uint8_t mask, uint8_t thing);
+    bool writeRegister8(uint8_t address, uint8_t data);
+    bool bitMask(uint8_t reg, uint8_t mask, uint8_t thing);
 
 private:
     uint8_t activeAddress;
