@@ -72,3 +72,26 @@ bool MLX90614::read16(uint8_t reg, uint16_t& out_val) {
     out_val = static_cast<uint16_t>(lsb) | (static_cast<uint16_t>(msb) << 8);
     return true;
 }
+
+uint16_t MLX90614::read_raw_temp(uint8_t reg) {
+    uint16_t raw = 0;
+    if (!read16(reg, raw)) {
+        return 0;
+    }
+    return raw;
+}
+
+float MLX90614::read_ambient_temp_c() {
+    uint16_t raw = read_raw_temp(MLX90614_REG_TA);
+    if (raw == 0 || (raw & 0x8000) != 0) {
+        return -999.0f;
+    }
+    float kelvin = static_cast<float>(raw) * MLX90614_TEMP_RES;
+    last_ambient_c = kelvin - MLX90614_KELVIN_OFFSET;
+    return last_ambient_c;
+}
+
+float MLX90614::get_last_ambient_c() const {
+    return last_ambient_c;
+}
+
