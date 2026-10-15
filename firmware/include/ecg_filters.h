@@ -228,4 +228,85 @@ private:
     float sum;
 };
 
+class ECGPeakDetector {
+public:
+    ECGPeakDetector(uint16_t sample_rate_hz = 250)
+        : sample_rate(sample_rate_hz),
+          refractory_samples(sample_rate_hz / 5),
+          samples_since_peak(0),
+          spki(0.0f),
+          npki(0.0f),
+          threshold(0.0f),
+          prev_val(0.0f),
+          prev_slope(0.0f),
+          is_initialized(false) {}
+
+    bool step(float energy, float& out_peak_val) {
+        samples_since_peak++;
+
+        float slope = energy - prev_val;
+        bool is_local_peak = (prev_slope > 0.0f && slope <= 0.0f);
+        float peak_candidate = prev_val;
+        prev_slope = slope;
+        prev_val = energy;
+
+        if (!is_local_peak) {
+            return false;
+        }
+
+        if (!is_initialized) {
+            spki = peak_candidate;
+            npki = peak_candidate * 0.1f;
+            threshold = npki + 0.25f * (spki - npki);
+            is_initialized = true;
+            return false;
+        }
+
+        if (samples_since_peak > refractory_samples && peak_candidate > threshold) {
+            spki = 0.125f * peak_candidate + 0.875f * spki;
+            threshold = npki + 0.25f * (spki - npki);
+            samples_since_peak = 0;
+            out_peak_val = peak_candidate;
+            return true;
+        } else {
+            npki = 0.125f * peak_candidate + 0.875f * npki;
+            threshold = npki + 0.25f * (spki - npki);
+            return false;
+        }
+    }
+
+    float get_threshold() const {
+        return threshold;
+    }
+
+    float get_spki() const {
+        return spki;
+    }
+
+    float get_npki() const {
+        return npki;
+    }
+
+    void reset() {
+        samples_since_peak = 0;
+        spki = 0.0f;
+        npki = 0.0f;
+        threshold = 0.0f;
+        prev_val = 0.0f;
+        prev_slope = 0.0f;
+        is_initialized = false;
+    }
+
+private:
+    uint16_t sample_rate;
+    uint16_t refractory_samples;
+    uint32_t samples_since_peak;
+    float spki;
+    float npki;
+    float threshold;
+    float prev_val;
+    float prev_slope;
+    bool is_initialized;
+};
+
 #endif
