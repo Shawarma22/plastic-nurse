@@ -126,6 +126,8 @@ def test_firmware_file_integrity():
         "max30102_regs.h",
         "max30102.h",
         "dsp_filters.h",
+        "ad8232.h",
+        "ecg_filters.h",
     ]
     for header in required_headers:
         path = firmware_dir / "include" / header
@@ -140,7 +142,23 @@ def test_firmware_file_integrity():
         "max30102.cpp",
         "dsp_filters.cpp",
         "ppg_task.cpp",
+        "ad8232.cpp",
+        "ecg_task.cpp",
     ]
     for src in required_src:
         path = firmware_dir / "src" / src
         assert path.exists()
+
+
+def test_synthetic_ecg_waveform_generation():
+    sim = FirmwareSimulator()
+    samples = [sim.generate_ecg_sample(t * 0.004) for t in range(500)]
+    assert len(samples) == 500
+    assert all(0 <= s <= 4095 for s in samples)
+
+    max_val = max(samples)
+    min_val = min(samples)
+    assert max_val >= 3200
+    assert min_val <= 1900
+    assert any(s > 3000 for s in samples)
+
