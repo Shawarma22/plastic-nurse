@@ -95,3 +95,27 @@ float MLX90614::get_last_ambient_c() const {
     return last_ambient_c;
 }
 
+float MLX90614::read_object_temp_c() {
+    uint16_t raw = read_raw_temp(MLX90614_REG_TOBJ1);
+    if (raw == 0 || (raw & 0x8000) != 0) {
+        return -999.0f;
+    }
+    float kelvin = static_cast<float>(raw) * MLX90614_TEMP_RES;
+    last_object_c = kelvin - MLX90614_KELVIN_OFFSET;
+    return last_object_c;
+}
+
+float MLX90614::get_last_object_c() const {
+    return last_object_c;
+}
+
+float MLX90614::read_object2_temp_c() {
+    uint16_t raw = read_raw_temp(MLX90614_REG_TOBJ2);
+    if (raw == 0 || (raw & 0x8000) != 0) {
+        return -999.0f;
+    }
+    float kelvin = static_cast<float>(raw) * MLX90614_TEMP_RES;
+    return kelvin - MLX90614_KELVIN_OFFSET;
+}
+
+

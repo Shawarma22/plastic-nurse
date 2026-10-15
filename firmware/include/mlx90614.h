@@ -16,6 +16,8 @@ public:
     float read_ambient_temp_c();
     float get_last_ambient_c() const;
     float read_object_temp_c();
+    float get_last_object_c() const;
+    float read_object2_temp_c();
     uint16_t read_raw_temp(uint8_t reg);
     bool write_emissivity(float emissivity);
     float read_emissivity();
