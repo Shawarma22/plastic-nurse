@@ -43,6 +43,10 @@ public:
     void emergency_stop();
     bool is_moving() const;
 
+    bool home(uint32_t timeout_ms = 10000);
+    bool move_to_compartment(uint8_t index);
+    uint8_t get_current_compartment() const;
+    static int32_t compartment_to_steps(uint8_t index);
     int32_t get_current_position() const;
     int32_t get_target_position() const;
     void set_current_position(int32_t pos);
@@ -74,6 +78,7 @@ private:
     uint32_t decel_start_step;
     uint32_t step_interval_us;
     uint32_t last_step_time_us;
+    uint8_t current_compartment;
     bool enabled;
     bool homed;
 };

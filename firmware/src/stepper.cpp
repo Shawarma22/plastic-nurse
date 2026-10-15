@@ -24,6 +24,7 @@ StepperDriver::StepperDriver(
     decel_start_step(0),
     step_interval_us(5000),
     last_step_time_us(0),
+    current_compartment(0),
     enabled(false),
     homed(false) {}
 
@@ -40,6 +41,7 @@ bool StepperDriver::init() {
     state = StepperState::Idle;
     current_pos = 0;
     target_pos = 0;
+    current_compartment = 0;
     homed = false;
     return true;
 }
@@ -218,4 +220,76 @@ bool StepperDriver::is_moving() const {
             state == StepperState::Decelerating ||
             state == StepperState::Homing);
 }
+
+bool StepperDriver::home(uint32_t timeout_ms) {
+    enable();
+    state = StepperState::Homing;
+    set_direction(StepperDir::CCW);
+
+    uint32_t start_time = millis();
+    while (!is_home_switch_active()) {
+        if (millis() - start_time > timeout_ms) {
+            state = StepperState::ErrorStall;
+            return false;
+        }
+        digitalWrite(pin_step, HIGH);
+        delayMicroseconds(2);
+        digitalWrite(pin_step, LOW);
+        delayMicroseconds(1200);
+    }
+
+    delay(20);
+    set_direction(StepperDir::CW);
+    start_time = millis();
+    while (is_home_switch_active()) {
+        if (millis() - start_time > 2000) {
+            state = StepperState::ErrorStall;
+            return false;
+        }
+        digitalWrite(pin_step, HIGH);
+        delayMicroseconds(2);
+        digitalWrite(pin_step, LOW);
+        delayMicroseconds(4000);
+    }
+
+    current_pos = 0;
+    target_pos = 0;
+    current_compartment = 0;
+    homed = true;
+    state = StepperState::Idle;
+    return true;
+}
+
+int32_t StepperDriver::compartment_to_steps(uint8_t index) {
+    if (index >= STEPPER_TOTAL_COMPARTMENTS) {
+        return 0;
+    }
+    constexpr int32_t total_rev_steps = static_cast<int32_t>(STEPPER_STEPS_PER_REV) * STEPPER_MICROSTEPS;
+    return (static_cast<int32_t>(index) * total_rev_steps) / STEPPER_TOTAL_COMPARTMENTS;
+}
+
+bool StepperDriver::move_to_compartment(uint8_t index) {
+    if (index >= STEPPER_TOTAL_COMPARTMENTS) {
+        return false;
+    }
+    constexpr int32_t total_rev_steps = static_cast<int32_t>(STEPPER_STEPS_PER_REV) * STEPPER_MICROSTEPS;
+    int32_t from_steps = compartment_to_steps(current_compartment);
+    int32_t to_steps = compartment_to_steps(index);
+    int32_t delta = to_steps - from_steps;
+
+    if (delta > total_rev_steps / 2) {
+        delta -= total_rev_steps;
+    } else if (delta < -total_rev_steps / 2) {
+        delta += total_rev_steps;
+    }
+
+    current_compartment = index;
+    move_steps(delta);
+    return true;
+}
+
+uint8_t StepperDriver::get_current_compartment() const {
+    return current_compartment;
+}
+
 
