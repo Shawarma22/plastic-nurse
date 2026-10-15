@@ -15,16 +15,56 @@ class FirmwareSimulator:
         drop_rate: float = 0.0,
         disconnect_ppg: bool = False,
         disconnect_ecg: bool = False,
+        include_temp: bool = False,
+        include_dispenser: bool = False,
+        disconnect_temp: bool = False,
+        target_temp_present: bool = True,
+        base_ambient_c: float = 24.5,
+        base_object_c: float = 36.8,
+        initial_compartment: int = 0,
     ):
         self.sample_rate_hz = sample_rate_hz
         self.battery_mv = initial_battery_mv
         self.drop_rate = max(0.0, min(1.0, drop_rate))
         self.disconnect_ppg = disconnect_ppg
         self.disconnect_ecg = disconnect_ecg
+        self.include_temp = include_temp
+        self.include_dispenser = include_dispenser
+        self.disconnect_temp = disconnect_temp
+        self.target_temp_present = target_temp_present
+        self.base_ambient_c = base_ambient_c
+        self.base_object_c = base_object_c
+        self.current_compartment = initial_compartment
+        self.target_compartment = initial_compartment
+        self.dispenser_moving = False
+        self.dispenser_homed = True
+        self.dispenser_stalled = False
         self.seq = 0
         self.start_time = time.monotonic()
         self.base_bpm = 72.0
         self.base_spo2 = 98.5
+
+    def move_to_compartment(self, comp: int) -> bool:
+        if comp < 0 or comp >= 14:
+            return False
+        self.target_compartment = comp
+        self.current_compartment = comp
+        self.dispenser_moving = False
+        return True
+
+    def home_dispenser(self) -> None:
+        self.current_compartment = 0
+        self.target_compartment = 0
+        self.dispenser_homed = True
+        self.dispenser_moving = False
+        self.dispenser_stalled = False
+
+    def trigger_stall(self) -> None:
+        self.dispenser_stalled = True
+        self.dispenser_moving = False
+
+    def clear_stall(self) -> None:
+        self.dispenser_stalled = False
 
     def generate_ecg_sample(self, elapsed: float) -> int:
         phase = elapsed * 2.0 * math.pi * (self.base_bpm / 60.0)
@@ -78,7 +118,7 @@ class FirmwareSimulator:
         else:
             status |= 0x08
 
-        return {
+        packet: Dict[str, Any] = {
             "seq": self.seq,
             "ts": ts_ms,
             "ppg": {
@@ -96,6 +136,49 @@ class FirmwareSimulator:
             "bat": self.battery_mv,
             "status": status,
         }
+
+        if self.include_temp:
+            if self.disconnect_temp:
+                temp_data = {
+                    "amb": 0.0,
+                    "obj": 0.0,
+                    "conf": 0.0,
+                    "target": False,
+                }
+            else:
+                amb = round(self.base_ambient_c + 0.1 * math.sin(elapsed * 0.05), 2)
+                if self.target_temp_present:
+                    obj = round(self.base_object_c + 0.05 * math.sin(elapsed * 0.1), 2)
+                    conf = 0.95
+                    target = True
+                    status |= 0x20 | 0x40
+                else:
+                    obj = round(self.base_ambient_c + 0.15 * math.cos(elapsed * 0.1), 2)
+                    conf = 0.05
+                    target = False
+                    status |= 0x20
+                temp_data = {
+                    "amb": amb,
+                    "obj": obj,
+                    "conf": conf,
+                    "target": target,
+                }
+            packet["temp"] = temp_data
+            packet["status"] = status
+
+        if self.include_dispenser:
+            if self.dispenser_moving:
+                status |= 0x80
+                packet["status"] = status
+            packet["dispenser"] = {
+                "comp": self.current_compartment,
+                "target": self.target_compartment,
+                "moving": self.dispenser_moving,
+                "homed": self.dispenser_homed,
+                "stall": self.dispenser_stalled,
+            }
+
+        return packet
 
     def serialize_packet(self, packet: Dict[str, Any]) -> str:
         return json.dumps(packet, separators=(",", ":"))
@@ -117,6 +200,10 @@ def main() -> None:
     parser.add_argument("--drop-rate", type=float, default=0.0)
     parser.add_argument("--disconnect-ppg", action="store_true")
     parser.add_argument("--disconnect-ecg", action="store_true")
+    parser.add_argument("--include-temp", action="store_true")
+    parser.add_argument("--include-dispenser", action="store_true")
+    parser.add_argument("--disconnect-temp", action="store_true")
+    parser.add_argument("--no-target-temp", action="store_true")
     args = parser.parse_args()
 
     interval = 1.0 / max(1, args.rate)
@@ -125,6 +212,10 @@ def main() -> None:
         drop_rate=args.drop_rate,
         disconnect_ppg=args.disconnect_ppg,
         disconnect_ecg=args.disconnect_ecg,
+        include_temp=args.include_temp,
+        include_dispenser=args.include_dispenser,
+        disconnect_temp=args.disconnect_temp,
+        target_temp_present=not args.no_target_temp,
     )
 
     try:
