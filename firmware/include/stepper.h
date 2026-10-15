@@ -53,6 +53,11 @@ public:
     bool is_homed() const;
     bool is_home_switch_active() const;
     StepperState get_state() const;
+    bool is_stalled() const;
+    void clear_stall();
+    void set_watchdog_timeout(uint32_t timeout_ms);
+    uint32_t get_watchdog_timeout() const;
+    bool check_watchdog();
     void set_acceleration(uint32_t accel);
     uint32_t get_current_speed() const;
     void compute_profile(uint32_t steps, uint32_t target_speed);
@@ -78,7 +83,10 @@ private:
     uint32_t decel_start_step;
     uint32_t step_interval_us;
     uint32_t last_step_time_us;
+    uint32_t motion_start_time_ms;
+    uint32_t watchdog_timeout_ms;
     uint8_t current_compartment;
+    bool stall_detected;
     bool enabled;
     bool homed;
 };

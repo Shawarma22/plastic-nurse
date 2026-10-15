@@ -24,7 +24,10 @@ StepperDriver::StepperDriver(
     decel_start_step(0),
     step_interval_us(5000),
     last_step_time_us(0),
+    motion_start_time_ms(0),
+    watchdog_timeout_ms(10000),
     current_compartment(0),
+    stall_detected(false),
     enabled(false),
     homed(false) {}
 
@@ -42,6 +45,9 @@ bool StepperDriver::init() {
     current_pos = 0;
     target_pos = 0;
     current_compartment = 0;
+    motion_start_time_ms = 0;
+    watchdog_timeout_ms = 10000;
+    stall_detected = false;
     homed = false;
     return true;
 }
@@ -170,6 +176,11 @@ void StepperDriver::move_steps(int32_t steps, uint32_t speed_steps_s) {
     target_pos = current_pos + steps;
     compute_profile(abs_steps, speed_steps_s > 0 ? speed_steps_s : max_speed);
     last_step_time_us = micros();
+    motion_start_time_ms = millis();
+    uint32_t estimated_ms = (abs_steps * 1000) / min_speed + 2000;
+    if (estimated_ms > watchdog_timeout_ms) {
+        watchdog_timeout_ms = estimated_ms;
+    }
 }
 
 void StepperDriver::move_to(int32_t absolute_position, uint32_t speed_steps_s) {
@@ -178,6 +189,10 @@ void StepperDriver::move_to(int32_t absolute_position, uint32_t speed_steps_s) {
 }
 
 bool StepperDriver::update() {
+    if (check_watchdog()) {
+        return false;
+    }
+
     if (!is_moving()) {
         return false;
     }
@@ -208,6 +223,7 @@ void StepperDriver::stop() {
 
 void StepperDriver::emergency_stop() {
     state = StepperState::ErrorStall;
+    stall_detected = true;
     total_steps = 0;
     step_count = 0;
     target_pos = current_pos;
@@ -291,5 +307,33 @@ bool StepperDriver::move_to_compartment(uint8_t index) {
 uint8_t StepperDriver::get_current_compartment() const {
     return current_compartment;
 }
+
+bool StepperDriver::is_stalled() const {
+    return stall_detected || (state == StepperState::ErrorStall);
+}
+
+void StepperDriver::clear_stall() {
+    stall_detected = false;
+    if (state == StepperState::ErrorStall) {
+        state = StepperState::Idle;
+    }
+}
+
+void StepperDriver::set_watchdog_timeout(uint32_t timeout_ms) {
+    watchdog_timeout_ms = timeout_ms;
+}
+
+uint32_t StepperDriver::get_watchdog_timeout() const {
+    return watchdog_timeout_ms;
+}
+
+bool StepperDriver::check_watchdog() {
+    if (is_moving() && (millis() - motion_start_time_ms > watchdog_timeout_ms)) {
+        emergency_stop();
+        return true;
+    }
+    return false;
+}
+
 
 
