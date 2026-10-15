@@ -38,6 +38,26 @@ void setup() {
         &xTaskECG,
         1
     );
+
+    xTaskCreatePinnedToCore(
+        taskTemp,
+        "temperature",
+        STACK_SIZE_SENSORS,
+        nullptr,
+        PRIORITY_SENSORS,
+        &xTaskTemp,
+        0
+    );
+
+    xTaskCreatePinnedToCore(
+        taskDispense,
+        "dispenser",
+        STACK_SIZE_SENSORS,
+        nullptr,
+        PRIORITY_SENSORS,
+        &xTaskDispense,
+        1
+    );
 }
 
 void loop() {

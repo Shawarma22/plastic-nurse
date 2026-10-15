@@ -2,7 +2,7 @@
 #include <ArduinoJson.h>
 
 size_t serializeSensorPacket(const SensorPacket& packet, char* buffer, size_t bufferSize) {
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<512> doc;
 
     doc["seq"] = packet.sequence_id;
     doc["ts"] = packet.timestamp_ms;
@@ -19,6 +19,19 @@ size_t serializeSensorPacket(const SensorPacket& packet, char* buffer, size_t bu
     ecg["raw"] = packet.ecg.raw_signal;
     ecg["lead_off"] = packet.ecg.leads_off;
 
+    JsonObject temp = doc.createNestedObject("temp");
+    temp["amb"] = packet.temp.ambient_c;
+    temp["obj"] = packet.temp.object_c;
+    temp["conf"] = packet.temp.confidence;
+    temp["target"] = packet.temp.target_present;
+
+    JsonObject dispenser = doc.createNestedObject("dispenser");
+    dispenser["comp"] = packet.dispenser.current_compartment;
+    dispenser["target"] = packet.dispenser.target_compartment;
+    dispenser["moving"] = packet.dispenser.is_moving;
+    dispenser["homed"] = packet.dispenser.is_homed;
+    dispenser["stall"] = packet.dispenser.stall_detected;
+
     doc["bat"] = packet.battery_mv;
     doc["status"] = packet.status_flags;
 
@@ -26,7 +39,7 @@ size_t serializeSensorPacket(const SensorPacket& packet, char* buffer, size_t bu
 }
 
 bool deserializeSensorPacket(const char* json, SensorPacket& packet) {
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<512> doc;
     DeserializationError error = deserializeJson(doc, json);
     if (error) {
         return false;
@@ -49,6 +62,23 @@ bool deserializeSensorPacket(const char* json, SensorPacket& packet) {
     if (!ecg.isNull()) {
         packet.ecg.raw_signal = ecg["raw"] | 0;
         packet.ecg.leads_off = ecg["lead_off"] | false;
+    }
+
+    JsonObject temp = doc["temp"];
+    if (!temp.isNull()) {
+        packet.temp.ambient_c = temp["amb"] | 0.0f;
+        packet.temp.object_c = temp["obj"] | 0.0f;
+        packet.temp.confidence = temp["conf"] | 0.0f;
+        packet.temp.target_present = temp["target"] | false;
+    }
+
+    JsonObject dispenser = doc["dispenser"];
+    if (!dispenser.isNull()) {
+        packet.dispenser.current_compartment = dispenser["comp"] | 0;
+        packet.dispenser.target_compartment = dispenser["target"] | 0;
+        packet.dispenser.is_moving = dispenser["moving"] | false;
+        packet.dispenser.is_homed = dispenser["homed"] | false;
+        packet.dispenser.stall_detected = dispenser["stall"] | false;
     }
 
     packet.battery_mv = doc["bat"] | 0;
