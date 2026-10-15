@@ -160,4 +160,31 @@ private:
     ButterworthLowPassFilter lp_filter;
 };
 
+class PanTompkinsDerivative {
+public:
+    PanTompkinsDerivative() : x1(0.0f), x2(0.0f), x3(0.0f), x4(0.0f) {}
+
+    float step(float input) {
+        float output = (2.0f * input + x1 - x3 - 2.0f * x4) * 0.125f;
+        x4 = x3;
+        x3 = x2;
+        x2 = x1;
+        x1 = input;
+        return output;
+    }
+
+    void reset() {
+        x1 = 0.0f;
+        x2 = 0.0f;
+        x3 = 0.0f;
+        x4 = 0.0f;
+    }
+
+private:
+    float x1;
+    float x2;
+    float x3;
+    float x4;
+};
+
 #endif
