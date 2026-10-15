@@ -118,4 +118,53 @@ float MLX90614::read_object2_temp_c() {
     return kelvin - MLX90614_KELVIN_OFFSET;
 }
 
+bool MLX90614::write16(uint8_t reg, uint16_t val) {
+    if (!initialized || wire == nullptr) {
+        return false;
+    }
+
+    uint8_t lsb = static_cast<uint8_t>(val & 0xFF);
+    uint8_t msb = static_cast<uint8_t>((val >> 8) & 0xFF);
+
+    uint8_t check_buf[4] = {
+        static_cast<uint8_t>(address << 1),
+        reg,
+        lsb,
+        msb
+    };
+    uint8_t pec = crc8(check_buf, 4);
+
+    wire->beginTransmission(address);
+    wire->write(reg);
+    wire->write(lsb);
+    wire->write(msb);
+    wire->write(pec);
+    return (wire->endTransmission() == 0);
+}
+
+float MLX90614::read_emissivity() {
+    uint16_t raw = 0;
+    if (!read16(MLX90614_REG_EMISSIVITY, raw)) {
+        return 0.0f;
+    }
+    return static_cast<float>(raw) / 65535.0f;
+}
+
+bool MLX90614::write_emissivity(float emissivity) {
+    if (emissivity < 0.1f || emissivity > 1.0f) {
+        return false;
+    }
+    uint16_t raw = static_cast<uint16_t>(emissivity * 65535.0f + 0.5f);
+    if (!write16(MLX90614_REG_EMISSIVITY, 0x0000)) {
+        return false;
+    }
+    delay(10);
+    if (!write16(MLX90614_REG_EMISSIVITY, raw)) {
+        return false;
+    }
+    delay(10);
+    return true;
+}
+
+
 
