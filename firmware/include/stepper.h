@@ -47,6 +47,10 @@ public:
     bool is_homed() const;
     bool is_home_switch_active() const;
     StepperState get_state() const;
+    void set_acceleration(uint32_t accel);
+    uint32_t get_current_speed() const;
+    void compute_profile(uint32_t steps, uint32_t target_speed);
+    uint32_t next_step_interval_us();
 
 private:
     uint8_t pin_step;
@@ -59,6 +63,14 @@ private:
     int32_t current_pos;
     int32_t target_pos;
     uint32_t max_speed;
+    uint32_t min_speed;
+    uint32_t current_speed;
+    uint32_t acceleration;
+    uint32_t total_steps;
+    uint32_t step_count;
+    uint32_t accel_steps;
+    uint32_t decel_start_step;
+    uint32_t step_interval_us;
     bool enabled;
     bool homed;
 };

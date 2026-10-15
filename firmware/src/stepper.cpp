@@ -15,6 +15,14 @@ StepperDriver::StepperDriver(
     current_pos(0),
     target_pos(0),
     max_speed(STEPPER_MAX_SPEED_STEPS_S),
+    min_speed(200),
+    current_speed(200),
+    acceleration(STEPPER_ACCEL_STEPS_S2),
+    total_steps(0),
+    step_count(0),
+    accel_steps(0),
+    decel_start_step(0),
+    step_interval_us(5000),
     enabled(false),
     homed(false) {}
 
@@ -90,3 +98,62 @@ bool StepperDriver::is_home_switch_active() const {
 StepperState StepperDriver::get_state() const {
     return state;
 }
+
+void StepperDriver::set_acceleration(uint32_t accel) {
+    if (accel > 0) {
+        acceleration = accel;
+    }
+}
+
+uint32_t StepperDriver::get_current_speed() const {
+    return current_speed;
+}
+
+void StepperDriver::compute_profile(uint32_t steps, uint32_t target_speed) {
+    total_steps = steps;
+    step_count = 0;
+    max_speed = target_speed;
+    current_speed = min_speed;
+    step_interval_us = 1000000UL / current_speed;
+
+    uint32_t needed_accel_steps = (max_speed * max_speed - min_speed * min_speed) / (2 * acceleration);
+    if (needed_accel_steps == 0) {
+        needed_accel_steps = 1;
+    }
+
+    if (needed_accel_steps * 2 > total_steps) {
+        accel_steps = total_steps / 2;
+        decel_start_step = total_steps - accel_steps;
+    } else {
+        accel_steps = needed_accel_steps;
+        decel_start_step = total_steps - needed_accel_steps;
+    }
+
+    state = (total_steps > 0) ? StepperState::Accelerating : StepperState::Idle;
+}
+
+uint32_t StepperDriver::next_step_interval_us() {
+    if (step_count < accel_steps) {
+        state = StepperState::Accelerating;
+        float progress = static_cast<float>(step_count) / static_cast<float>(accel_steps > 0 ? accel_steps : 1);
+        current_speed = min_speed + static_cast<uint32_t>((max_speed - min_speed) * progress);
+    } else if (step_count >= decel_start_step) {
+        state = StepperState::Decelerating;
+        uint32_t decel_step = step_count - decel_start_step;
+        uint32_t decel_total = total_steps - decel_start_step;
+        float progress = static_cast<float>(decel_step) / static_cast<float>(decel_total > 0 ? decel_total : 1);
+        current_speed = max_speed - static_cast<uint32_t>((max_speed - min_speed) * progress);
+    } else {
+        state = StepperState::Running;
+        current_speed = max_speed;
+    }
+
+    if (current_speed < min_speed) {
+        current_speed = min_speed;
+    }
+
+    step_interval_us = 1000000UL / current_speed;
+    step_count++;
+    return step_interval_us;
+}
+
