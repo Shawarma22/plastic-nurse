@@ -23,6 +23,7 @@ StepperDriver::StepperDriver(
     accel_steps(0),
     decel_start_step(0),
     step_interval_us(5000),
+    last_step_time_us(0),
     enabled(false),
     homed(false) {}
 
@@ -155,5 +156,66 @@ uint32_t StepperDriver::next_step_interval_us() {
     step_interval_us = 1000000UL / current_speed;
     step_count++;
     return step_interval_us;
+}
+
+void StepperDriver::move_steps(int32_t steps, uint32_t speed_steps_s) {
+    if (steps == 0) {
+        return;
+    }
+    enable();
+    uint32_t abs_steps = (steps < 0) ? -steps : steps;
+    set_direction((steps > 0) ? StepperDir::CW : StepperDir::CCW);
+    target_pos = current_pos + steps;
+    compute_profile(abs_steps, speed_steps_s > 0 ? speed_steps_s : max_speed);
+    last_step_time_us = micros();
+}
+
+void StepperDriver::move_to(int32_t absolute_position, uint32_t speed_steps_s) {
+    int32_t delta = absolute_position - current_pos;
+    move_steps(delta, speed_steps_s);
+}
+
+bool StepperDriver::update() {
+    if (!is_moving()) {
+        return false;
+    }
+
+    uint32_t now = micros();
+    if (now - last_step_time_us < step_interval_us) {
+        return true;
+    }
+
+    last_step_time_us = now;
+    step_pulse();
+
+    if (step_count < total_steps) {
+        next_step_interval_us();
+    } else {
+        state = StepperState::Idle;
+    }
+
+    return is_moving();
+}
+
+void StepperDriver::stop() {
+    state = StepperState::Idle;
+    total_steps = 0;
+    step_count = 0;
+    target_pos = current_pos;
+}
+
+void StepperDriver::emergency_stop() {
+    state = StepperState::ErrorStall;
+    total_steps = 0;
+    step_count = 0;
+    target_pos = current_pos;
+    disable();
+}
+
+bool StepperDriver::is_moving() const {
+    return (state == StepperState::Accelerating ||
+            state == StepperState::Running ||
+            state == StepperState::Decelerating ||
+            state == StepperState::Homing);
 }
 

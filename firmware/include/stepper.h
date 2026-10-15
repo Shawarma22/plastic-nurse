@@ -36,7 +36,9 @@ public:
 
     void set_direction(StepperDir dir);
     void step_pulse();
-    void move_steps(int32_t steps, uint32_t speed_steps_s);
+    void move_steps(int32_t steps, uint32_t speed_steps_s = 0);
+    void move_to(int32_t absolute_position, uint32_t speed_steps_s = 0);
+    bool update();
     void stop();
     void emergency_stop();
     bool is_moving() const;
@@ -71,6 +73,7 @@ private:
     uint32_t accel_steps;
     uint32_t decel_start_step;
     uint32_t step_interval_us;
+    uint32_t last_step_time_us;
     bool enabled;
     bool homed;
 };
