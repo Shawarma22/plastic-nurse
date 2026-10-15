@@ -187,4 +187,45 @@ private:
     float x4;
 };
 
+template <uint8_t WindowSize = 32>
+class MovingWindowIntegrator {
+public:
+    MovingWindowIntegrator() : index(0), count(0), sum(0.0f) {
+        for (uint8_t i = 0; i < WindowSize; ++i) {
+            buffer[i] = 0.0f;
+        }
+    }
+
+    float step(float input) {
+        float squared = input * input;
+        sum -= buffer[index];
+        buffer[index] = squared;
+        sum += squared;
+        index = (index + 1) % WindowSize;
+        if (count < WindowSize) {
+            count++;
+        }
+        return sum / static_cast<float>(count);
+    }
+
+    float get_energy() const {
+        return (count == 0) ? 0.0f : (sum / static_cast<float>(count));
+    }
+
+    void reset() {
+        index = 0;
+        count = 0;
+        sum = 0.0f;
+        for (uint8_t i = 0; i < WindowSize; ++i) {
+            buffer[i] = 0.0f;
+        }
+    }
+
+private:
+    float buffer[WindowSize];
+    uint8_t index;
+    uint8_t count;
+    float sum;
+};
+
 #endif
