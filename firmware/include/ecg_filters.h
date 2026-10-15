@@ -309,4 +309,79 @@ private:
     bool is_initialized;
 };
 
+template <uint8_t Capacity = 8>
+class ECGHeartRateCalculator {
+public:
+    ECGHeartRateCalculator()
+        : last_peak_time_ms(0),
+          current_bpm(0.0f),
+          buffer_index(0),
+          buffer_count(0) {
+        for (uint8_t i = 0; i < Capacity; ++i) {
+            rr_intervals_ms[i] = 0;
+        }
+    }
+
+    bool record_peak(uint32_t peak_time_ms) {
+        if (last_peak_time_ms == 0) {
+            last_peak_time_ms = peak_time_ms;
+            return false;
+        }
+
+        uint32_t rr_ms = peak_time_ms - last_peak_time_ms;
+        last_peak_time_ms = peak_time_ms;
+
+        if (rr_ms < 300 || rr_ms > 2000) {
+            return false;
+        }
+
+        rr_intervals_ms[buffer_index] = rr_ms;
+        buffer_index = (buffer_index + 1) % Capacity;
+        if (buffer_count < Capacity) {
+            buffer_count++;
+        }
+
+        uint32_t sum = 0;
+        for (uint8_t i = 0; i < buffer_count; ++i) {
+            sum += rr_intervals_ms[i];
+        }
+        float avg_rr_ms = static_cast<float>(sum) / static_cast<float>(buffer_count);
+        current_bpm = 60000.0f / avg_rr_ms;
+        return true;
+    }
+
+    float get_bpm() const {
+        return current_bpm;
+    }
+
+    uint32_t get_last_rr_ms() const {
+        if (buffer_count == 0) {
+            return 0;
+        }
+        uint8_t idx = (buffer_index == 0) ? (Capacity - 1) : (buffer_index - 1);
+        return rr_intervals_ms[idx];
+    }
+
+    uint8_t get_interval_count() const {
+        return buffer_count;
+    }
+
+    void reset() {
+        last_peak_time_ms = 0;
+        current_bpm = 0.0f;
+        buffer_index = 0;
+        buffer_count = 0;
+        for (uint8_t i = 0; i < Capacity; ++i) {
+            rr_intervals_ms[i] = 0;
+        }
+    }
+
+private:
+    uint32_t last_peak_time_ms;
+    float current_bpm;
+    uint32_t rr_intervals_ms[Capacity];
+    uint8_t buffer_index;
+    uint8_t buffer_count;
+};
+
 #endif
