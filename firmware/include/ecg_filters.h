@@ -75,4 +75,37 @@ private:
     uint16_t count;
 };
 
+class ButterworthHighPassFilter {
+public:
+    ButterworthHighPassFilter() : x1(0.0f), x2(0.0f), y1(0.0f), y2(0.0f) {}
+
+    float step(float input) {
+        float output = b0 * input + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+        x2 = x1;
+        x1 = input;
+        y2 = y1;
+        y1 = output;
+        return output;
+    }
+
+    void reset() {
+        x1 = 0.0f;
+        x2 = 0.0f;
+        y1 = 0.0f;
+        y2 = 0.0f;
+    }
+
+private:
+    static constexpr float b0 = 0.99115360f;
+    static constexpr float b1 = -1.98230719f;
+    static constexpr float b2 = 0.99115360f;
+    static constexpr float a1 = -1.98222893f;
+    static constexpr float a2 = 0.98238545f;
+
+    float x1;
+    float x2;
+    float y1;
+    float y2;
+};
+
 #endif
