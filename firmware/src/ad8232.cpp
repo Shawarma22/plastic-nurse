@@ -31,3 +31,37 @@ bool AD8232Driver::init() {
     leads_attached = false;
     return true;
 }
+
+uint16_t AD8232Driver::read_raw() {
+    if (!initialized) {
+        return 0;
+    }
+    last_raw_sample = static_cast<uint16_t>(analogRead(pin_out));
+    return last_raw_sample;
+}
+
+bool AD8232Driver::is_connected() const {
+    return initialized;
+}
+
+uint16_t AD8232Driver::get_sample_rate() const {
+    return AD8232_DEFAULT_SAMPLE_RATE;
+}
+
+void AD8232Driver::shutdown() {
+    if (pin_sdn != 255) {
+        digitalWrite(pin_sdn, LOW);
+    }
+}
+
+void AD8232Driver::resume() {
+    if (pin_sdn != 255) {
+        digitalWrite(pin_sdn, HIGH);
+    }
+}
+
+void AD8232Driver::reset() {
+    last_raw_sample = 0;
+    leads_attached = false;
+}
+

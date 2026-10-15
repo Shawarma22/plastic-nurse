@@ -25,6 +25,9 @@ public:
     bool are_leads_attached();
     bool is_connected() const;
     uint16_t get_sample_rate() const;
+    void shutdown();
+    void resume();
+    void reset();
 
 private:
     uint8_t pin_out;
