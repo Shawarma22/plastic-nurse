@@ -384,4 +384,59 @@ private:
     uint8_t buffer_count;
 };
 
+class ECGContactQuality {
+public:
+    ECGContactQuality() : confidence(0.0f) {}
+
+    float calculate(
+        bool leads_attached,
+        float spki,
+        float npki,
+        uint16_t raw_sample,
+        uint8_t beat_count
+    ) {
+        if (!leads_attached) {
+            confidence = 0.0f;
+            return confidence;
+        }
+
+        if (raw_sample <= 50 || raw_sample >= 4045) {
+            confidence = 0.05f;
+            return confidence;
+        }
+
+        float snr_ratio = (npki > 0.001f) ? (spki / npki) : (spki > 0.1f ? 10.0f : 1.0f);
+        float snr_score = 0.0f;
+        if (snr_ratio >= 4.0f) {
+            snr_score = 0.6f;
+        } else if (snr_ratio >= 2.0f) {
+            snr_score = 0.3f + 0.3f * ((snr_ratio - 2.0f) / 2.0f);
+        } else {
+            snr_score = 0.1f * (snr_ratio / 2.0f);
+        }
+
+        float beat_score = (beat_count >= 5) ? 0.4f : (0.08f * static_cast<float>(beat_count));
+
+        confidence = snr_score + beat_score;
+        if (confidence > 1.0f) {
+            confidence = 1.0f;
+        }
+        if (confidence < 0.0f) {
+            confidence = 0.0f;
+        }
+        return confidence;
+    }
+
+    float get_confidence() const {
+        return confidence;
+    }
+
+    void reset() {
+        confidence = 0.0f;
+    }
+
+private:
+    float confidence;
+};
+
 #endif
