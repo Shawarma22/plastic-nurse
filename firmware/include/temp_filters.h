@@ -112,4 +112,68 @@ private:
     float sum;
 };
 
+class TemperatureConfidenceEstimator {
+public:
+    TemperatureConfidenceEstimator() : confidence(0.0f), target_present(false) {}
+
+    float calculate(float ambient_c, float object_c, float variance, bool stable) {
+        if (object_c < 25.0f || object_c > 45.0f) {
+            confidence = 0.0f;
+            target_present = false;
+            return confidence;
+        }
+
+        float delta_t = object_c - ambient_c;
+        if (delta_t < 1.5f) {
+            confidence = 0.05f;
+            target_present = false;
+            return confidence;
+        }
+
+        float delta_score = (delta_t - 2.0f) / 6.0f;
+        if (delta_score > 0.5f) {
+            delta_score = 0.5f;
+        } else if (delta_score < 0.0f) {
+            delta_score = 0.0f;
+        }
+
+        float range_score = 0.0f;
+        if (object_c >= 34.0f && object_c <= 39.0f) {
+            range_score = 0.3f;
+        } else if (object_c >= 31.0f && object_c <= 42.0f) {
+            range_score = 0.15f;
+        }
+
+        float stability_score = stable ? 0.2f : (variance < 0.1f ? 0.1f : 0.0f);
+
+        confidence = delta_score + range_score + stability_score;
+        if (confidence > 1.0f) {
+            confidence = 1.0f;
+        }
+        if (confidence < 0.0f) {
+            confidence = 0.0f;
+        }
+
+        target_present = (confidence >= 0.6f);
+        return confidence;
+    }
+
+    bool is_target_present() const {
+        return target_present;
+    }
+
+    float get_confidence() const {
+        return confidence;
+    }
+
+    void reset() {
+        confidence = 0.0f;
+        target_present = false;
+    }
+
+private:
+    float confidence;
+    bool target_present;
+};
+
 #endif
