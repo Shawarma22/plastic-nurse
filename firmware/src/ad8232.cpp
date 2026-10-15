@@ -1,6 +1,9 @@
 #include "ad8232.h"
 #include <Arduino.h>
 
+volatile bool AD8232Driver::s_leads_changed = false;
+void (*AD8232Driver::s_user_callback)() = nullptr;
+
 AD8232Driver::AD8232Driver(
     uint8_t pin_out,
     uint8_t pin_lo_plus,
@@ -93,4 +96,41 @@ void AD8232Driver::reset() {
     last_raw_sample = 0;
     leads_attached = false;
 }
+
+void IRAM_ATTR AD8232Driver::isr_lo_plus() {
+    s_leads_changed = true;
+    if (s_user_callback) {
+        s_user_callback();
+    }
+}
+
+void IRAM_ATTR AD8232Driver::isr_lo_minus() {
+    s_leads_changed = true;
+    if (s_user_callback) {
+        s_user_callback();
+    }
+}
+
+bool AD8232Driver::enable_interrupts(void (*callback)()) {
+    s_user_callback = callback;
+    s_leads_changed = false;
+    attachInterrupt(digitalPinToInterrupt(pin_lo_plus), isr_lo_plus, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(pin_lo_minus), isr_lo_minus, CHANGE);
+    return true;
+}
+
+void AD8232Driver::disable_interrupts() {
+    detachInterrupt(digitalPinToInterrupt(pin_lo_plus));
+    detachInterrupt(digitalPinToInterrupt(pin_lo_minus));
+    s_user_callback = nullptr;
+}
+
+bool AD8232Driver::has_leads_changed() {
+    return s_leads_changed;
+}
+
+void AD8232Driver::clear_leads_changed() {
+    s_leads_changed = false;
+}
+
 

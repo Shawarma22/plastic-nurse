@@ -31,8 +31,17 @@ public:
     void shutdown();
     void resume();
     void reset();
+    bool enable_interrupts(void (*callback)() = nullptr);
+    void disable_interrupts();
+    bool has_leads_changed();
+    void clear_leads_changed();
 
 private:
+    static void isr_lo_plus();
+    static void isr_lo_minus();
+    static volatile bool s_leads_changed;
+    static void (*s_user_callback)();
+
     uint8_t pin_out;
     uint8_t pin_lo_plus;
     uint8_t pin_lo_minus;
