@@ -28,6 +28,16 @@ void setup() {
         &xTaskSensors,
         0
     );
+
+    xTaskCreatePinnedToCore(
+        taskECG,
+        "ecg",
+        STACK_SIZE_SENSORS,
+        nullptr,
+        PRIORITY_SENSORS,
+        &xTaskECG,
+        1
+    );
 }
 
 void loop() {

@@ -24,6 +24,9 @@ struct Max30102Data {
 
 struct Ad8232Data {
     uint16_t raw_signal;
+    float filtered_signal;
+    float bpm;
+    float confidence;
     bool leads_off;
 };
 

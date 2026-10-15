@@ -8,6 +8,7 @@
 
 extern TaskHandle_t xTaskHeartbeat;
 extern TaskHandle_t xTaskSensors;
+extern TaskHandle_t xTaskECG;
 extern TaskHandle_t xTaskTelemetry;
 
 extern QueueHandle_t xQueueSensorData;
@@ -15,6 +16,7 @@ extern QueueHandle_t xQueueEvents;
 
 void taskHeartbeat(void* pvParameters);
 void taskSensors(void* pvParameters);
+void taskECG(void* pvParameters);
 void taskTelemetry(void* pvParameters);
 
 inline void initSystemQueues() {
