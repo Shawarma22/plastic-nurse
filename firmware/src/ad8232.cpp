@@ -40,6 +40,35 @@ uint16_t AD8232Driver::read_raw() {
     return last_raw_sample;
 }
 
+bool AD8232Driver::are_leads_attached() {
+    if (!initialized) {
+        return false;
+    }
+    bool lo_plus = (digitalRead(pin_lo_plus) == HIGH);
+    bool lo_minus = (digitalRead(pin_lo_minus) == HIGH);
+    leads_attached = (!lo_plus && !lo_minus);
+    return leads_attached;
+}
+
+bool AD8232Driver::is_lo_plus_active() const {
+    return (digitalRead(pin_lo_plus) == HIGH);
+}
+
+bool AD8232Driver::is_lo_minus_active() const {
+    return (digitalRead(pin_lo_minus) == HIGH);
+}
+
+uint8_t AD8232Driver::get_leads_status() const {
+    uint8_t status = 0;
+    if (digitalRead(pin_lo_plus) == HIGH) {
+        status |= 0x01;
+    }
+    if (digitalRead(pin_lo_minus) == HIGH) {
+        status |= 0x02;
+    }
+    return status;
+}
+
 bool AD8232Driver::is_connected() const {
     return initialized;
 }

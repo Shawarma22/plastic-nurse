@@ -23,6 +23,9 @@ public:
     bool init();
     uint16_t read_raw();
     bool are_leads_attached();
+    bool is_lo_plus_active() const;
+    bool is_lo_minus_active() const;
+    uint8_t get_leads_status() const;
     bool is_connected() const;
     uint16_t get_sample_rate() const;
     void shutdown();
