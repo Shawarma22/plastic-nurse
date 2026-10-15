@@ -26,6 +26,18 @@ class FirmwareSimulator:
         self.base_bpm = 72.0
         self.base_spo2 = 98.5
 
+    def generate_ecg_sample(self, elapsed: float) -> int:
+        phase = elapsed * 2.0 * math.pi * (self.base_bpm / 60.0)
+        cycle_phase = (phase % (2.0 * math.pi)) - math.pi
+        p_wave = 140.0 * math.exp(-((cycle_phase + 1.2) / 0.18) ** 2)
+        q_wave = -180.0 * math.exp(-((cycle_phase + 0.35) / 0.08) ** 2)
+        r_wave = 1500.0 * math.exp(-((cycle_phase) / 0.1) ** 2)
+        s_wave = -320.0 * math.exp(-((cycle_phase - 0.35) / 0.09) ** 2)
+        t_wave = 280.0 * math.exp(-((cycle_phase - 1.2) / 0.35) ** 2)
+        baseline = 2048.0 + 35.0 * math.sin(elapsed * 0.3 * 2.0 * math.pi)
+        sample = int(baseline + p_wave + q_wave + r_wave + s_wave + t_wave)
+        return max(0, min(4095, sample))
+
     def generate_packet(self) -> Dict[str, Any]:
         self.seq += 1
         elapsed = time.monotonic() - self.start_time
@@ -37,9 +49,7 @@ class FirmwareSimulator:
             ecg_val = 0
             lead_off = True
         else:
-            qrs = math.exp(-((math.sin(phase / 2.0) * 10.0) ** 2)) * 1200.0
-            ecg_val = int(2048 + 300 * math.sin(phase) + qrs)
-            ecg_val = max(0, min(4095, ecg_val))
+            ecg_val = self.generate_ecg_sample(elapsed)
             lead_off = False
 
         if self.disconnect_ppg:
