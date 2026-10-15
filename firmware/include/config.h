@@ -20,4 +20,10 @@ static constexpr uint8_t PRIORITY_SENSORS = 3;
 static constexpr uint8_t SENSOR_QUEUE_DEPTH = 32;
 static constexpr uint32_t TELEMETRY_INTERVAL_MS = 500;
 
+static constexpr uint16_t STEPPER_STEPS_PER_REV = 200;
+static constexpr uint8_t STEPPER_MICROSTEPS = 16;
+static constexpr uint8_t STEPPER_TOTAL_COMPARTMENTS = 14;
+static constexpr uint32_t STEPPER_MAX_SPEED_STEPS_S = 1600;
+static constexpr uint32_t STEPPER_ACCEL_STEPS_S2 = 3200;
+
 #endif

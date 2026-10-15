@@ -17,4 +17,9 @@ static constexpr uint8_t PIN_LED_STATUS = 2;
 static constexpr uint8_t PIN_LED_WIFI = 4;
 static constexpr uint8_t PIN_LED_SENSOR = 16;
 
+static constexpr uint8_t PIN_STEPPER_STEP = 18;
+static constexpr uint8_t PIN_STEPPER_DIR = 5;
+static constexpr uint8_t PIN_STEPPER_ENABLE = 17;
+static constexpr uint8_t PIN_STEPPER_HOME = 15;
+
 #endif
