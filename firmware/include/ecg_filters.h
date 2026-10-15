@@ -108,4 +108,56 @@ private:
     float y2;
 };
 
+class ButterworthLowPassFilter {
+public:
+    ButterworthLowPassFilter() : x1(0.0f), x2(0.0f), y1(0.0f), y2(0.0f) {}
+
+    float step(float input) {
+        float output = b0 * input + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+        x2 = x1;
+        x1 = input;
+        y2 = y1;
+        y1 = output;
+        return output;
+    }
+
+    void reset() {
+        x1 = 0.0f;
+        x2 = 0.0f;
+        y1 = 0.0f;
+        y2 = 0.0f;
+    }
+
+private:
+    static constexpr float b0 = 0.14532388f;
+    static constexpr float b1 = 0.29064777f;
+    static constexpr float b2 = 0.14532388f;
+    static constexpr float a1 = -0.67102909f;
+    static constexpr float a2 = 0.25232463f;
+
+    float x1;
+    float x2;
+    float y1;
+    float y2;
+};
+
+class ECGBandpassFilter {
+public:
+    ECGBandpassFilter() {}
+
+    float step(float input) {
+        float hp = hp_filter.step(input);
+        return lp_filter.step(hp);
+    }
+
+    void reset() {
+        hp_filter.reset();
+        lp_filter.reset();
+    }
+
+private:
+    ButterworthHighPassFilter hp_filter;
+    ButterworthLowPassFilter lp_filter;
+};
+
 #endif
