@@ -7,6 +7,8 @@
 #include "config.h"
 
 static constexpr uint16_t AD8232_DEFAULT_SAMPLE_RATE = AD8232_SAMPLE_RATE_HZ;
+static constexpr uint32_t AD8232_SAMPLE_INTERVAL_US = 4000;
+static constexpr uint32_t AD8232_SAMPLE_INTERVAL_MS = 4;
 static constexpr uint16_t AD8232_BUFFER_CAPACITY = 128;
 static constexpr uint16_t AD8232_ADC_MAX_VALUE = 4095;
 static constexpr float AD8232_VREF = 3.3f;
@@ -35,6 +37,11 @@ public:
     void disable_interrupts();
     bool has_leads_changed();
     void clear_leads_changed();
+    bool is_sample_ready();
+    bool is_sample_ready(uint32_t now_us);
+    void update_sample_time(uint32_t now_us);
+    uint32_t get_sample_interval_us() const;
+    void set_sample_rate(uint16_t rate_hz);
 
 private:
     static void isr_lo_plus();
@@ -49,6 +56,9 @@ private:
     bool initialized;
     bool leads_attached;
     uint16_t last_raw_sample;
+    uint16_t sample_rate_hz;
+    uint32_t sample_interval_us;
+    uint32_t last_sample_time_us;
 };
 
 #endif

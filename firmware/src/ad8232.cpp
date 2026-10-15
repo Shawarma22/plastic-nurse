@@ -15,7 +15,10 @@ AD8232Driver::AD8232Driver(
     pin_sdn(pin_sdn),
     initialized(false),
     leads_attached(false),
-    last_raw_sample(0) {}
+    last_raw_sample(0),
+    sample_rate_hz(AD8232_DEFAULT_SAMPLE_RATE),
+    sample_interval_us(AD8232_SAMPLE_INTERVAL_US),
+    last_sample_time_us(0) {}
 
 bool AD8232Driver::init() {
     pinMode(pin_out, INPUT);
@@ -132,5 +135,34 @@ bool AD8232Driver::has_leads_changed() {
 void AD8232Driver::clear_leads_changed() {
     s_leads_changed = false;
 }
+
+bool AD8232Driver::is_sample_ready() {
+    uint32_t now = micros();
+    return is_sample_ready(now);
+}
+
+bool AD8232Driver::is_sample_ready(uint32_t now_us) {
+    if (!initialized) {
+        return false;
+    }
+    return (now_us - last_sample_time_us) >= sample_interval_us;
+}
+
+void AD8232Driver::update_sample_time(uint32_t now_us) {
+    last_sample_time_us = now_us;
+}
+
+uint32_t AD8232Driver::get_sample_interval_us() const {
+    return sample_interval_us;
+}
+
+void AD8232Driver::set_sample_rate(uint16_t rate_hz) {
+    if (rate_hz == 0) {
+        return;
+    }
+    sample_rate_hz = rate_hz;
+    sample_interval_us = 1000000UL / rate_hz;
+}
+
 
 
