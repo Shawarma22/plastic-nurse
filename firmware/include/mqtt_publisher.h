@@ -40,6 +40,8 @@ public:
     void set_broker(const char* broker, uint16_t port);
     uint32_t get_published_count() const;
     uint32_t get_dropped_count() const;
+    bool subscribe_commands();
+    static void handle_incoming_message(char* topic, uint8_t* payload, unsigned int length);
 
 private:
     const char* broker_host;

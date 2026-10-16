@@ -1,6 +1,8 @@
 #include "mqtt_publisher.h"
 #include "packet_serializer.h"
+#include "tasks.h"
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <stdio.h>
 
 MqttPublisher::MqttPublisher(const char* broker, uint16_t port, const char* client_id)
@@ -19,6 +21,7 @@ bool MqttPublisher::init() {
     mqtt_client.setServer(broker_host, broker_port);
     mqtt_client.setBufferSize(MQTT_BUFFER_SIZE);
     mqtt_client.setKeepAlive(MQTT_KEEPALIVE_SEC);
+    mqtt_client.setCallback(handle_incoming_message);
     state = MqttState::Disconnected;
     return true;
 }
@@ -41,6 +44,7 @@ bool MqttPublisher::connect() {
     if (success) {
         state = MqttState::Connected;
         publish_status(LWT_PAYLOAD_ONLINE);
+        subscribe_commands();
         return true;
     }
 
@@ -153,3 +157,46 @@ uint32_t MqttPublisher::get_published_count() const {
 uint32_t MqttPublisher::get_dropped_count() const {
     return dropped_count;
 }
+
+bool MqttPublisher::subscribe_commands() {
+    if (!mqtt_client.connected()) {
+        return false;
+    }
+    return mqtt_client.subscribe(TOPIC_CMD_DISPENSE, 1);
+}
+
+void MqttPublisher::handle_incoming_message(char* topic, uint8_t* payload, unsigned int length) {
+    if (topic == nullptr || payload == nullptr || length == 0) {
+        return;
+    }
+
+    if (strcmp(topic, TOPIC_CMD_DISPENSE) == 0 && xQueueDispenseCmd != nullptr) {
+        StaticJsonDocument<256> doc;
+        DeserializationError err = deserializeJson(doc, payload, length);
+        if (err) {
+            return;
+        }
+
+        const char* cmd = doc["cmd"] | "";
+        DispenseCommand dispenseCmd{};
+
+        if (strcmp(cmd, "dispense") == 0 || strcmp(cmd, "move") == 0) {
+            dispenseCmd.type = DispenseCmdType::MoveToCompartment;
+            dispenseCmd.compartment = doc["compartment"] | 0;
+            xQueueSend(xQueueDispenseCmd, &dispenseCmd, 0);
+        } else if (strcmp(cmd, "home") == 0) {
+            dispenseCmd.type = DispenseCmdType::Home;
+            dispenseCmd.compartment = 0;
+            xQueueSend(xQueueDispenseCmd, &dispenseCmd, 0);
+        } else if (strcmp(cmd, "stop") == 0 || strcmp(cmd, "estop") == 0) {
+            dispenseCmd.type = DispenseCmdType::EmergencyStop;
+            dispenseCmd.compartment = 0;
+            xQueueSend(xQueueDispenseCmd, &dispenseCmd, 0);
+        } else if (strcmp(cmd, "clear") == 0 || strcmp(cmd, "clear_stall") == 0) {
+            dispenseCmd.type = DispenseCmdType::ClearStall;
+            dispenseCmd.compartment = 0;
+            xQueueSend(xQueueDispenseCmd, &dispenseCmd, 0);
+        }
+    }
+}
+
