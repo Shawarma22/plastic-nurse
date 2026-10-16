@@ -26,4 +26,22 @@ static constexpr uint8_t STEPPER_TOTAL_COMPARTMENTS = 14;
 static constexpr uint32_t STEPPER_MAX_SPEED_STEPS_S = 1600;
 static constexpr uint32_t STEPPER_ACCEL_STEPS_S2 = 3200;
 
+static constexpr const char* WIFI_DEFAULT_SSID = "DroidNet";
+static constexpr const char* WIFI_DEFAULT_PASS = "AssistiveDroid2026";
+static constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 10000;
+static constexpr uint32_t WIFI_RECONNECT_INTERVAL_MS = 5000;
+
+static constexpr const char* MQTT_DEFAULT_BROKER = "192.168.4.1";
+static constexpr uint16_t MQTT_DEFAULT_PORT = 1883;
+static constexpr const char* MQTT_CLIENT_ID = "droid-esp32-vitals";
+static constexpr uint16_t MQTT_KEEPALIVE_SEC = 15;
+static constexpr uint16_t MQTT_BUFFER_SIZE = 1024;
+static constexpr uint32_t MQTT_RECONNECT_INTERVAL_MS = 3000;
+static constexpr uint16_t MQTT_OFFLINE_QUEUE_CAPACITY = 500;
+static constexpr uint32_t MQTT_PROCESSED_RATE_LIMIT_MS = 500;
+
+static constexpr uint32_t STACK_SIZE_NETWORK = 4096;
+static constexpr uint8_t PRIORITY_NETWORK = 2;
+
 #endif
+
