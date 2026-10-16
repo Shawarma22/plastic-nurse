@@ -1,5 +1,7 @@
 #include "mqtt_publisher.h"
+#include "packet_serializer.h"
 #include <Arduino.h>
+#include <stdio.h>
 
 MqttPublisher::MqttPublisher(const char* broker, uint16_t port, const char* client_id)
     : broker_host(broker),
@@ -91,26 +93,48 @@ bool MqttPublisher::publish_processed(const SensorPacket& packet) {
         dropped_count++;
         return false;
     }
-    published_count++;
-    return true;
+    size_t len = serializeSensorPacket(packet, buffer, sizeof(buffer));
+    if (len == 0) {
+        dropped_count++;
+        return false;
+    }
+    bool ok = mqtt_client.publish(TOPIC_VITALS_PROCESSED, buffer);
+    if (ok) {
+        published_count++;
+    } else {
+        dropped_count++;
+    }
+    return ok;
 }
 
 bool MqttPublisher::publish_raw(const uint8_t* payload, size_t length) {
-    if (!mqtt_client.connected()) {
+    if (!mqtt_client.connected() || payload == nullptr || length == 0) {
         dropped_count++;
         return false;
     }
-    published_count++;
-    return true;
+    bool ok = mqtt_client.publish(TOPIC_VITALS_RAW, payload, length);
+    if (ok) {
+        published_count++;
+    } else {
+        dropped_count++;
+    }
+    return ok;
 }
 
 bool MqttPublisher::publish_event(const char* event_type, const char* details) {
-    if (!mqtt_client.connected()) {
+    if (!mqtt_client.connected() || event_type == nullptr) {
         dropped_count++;
         return false;
     }
-    published_count++;
-    return true;
+    snprintf(buffer, sizeof(buffer), "{\"event\":\"%s\",\"details\":\"%s\",\"ts\":%lu}",
+             event_type, details ? details : "", static_cast<unsigned long>(millis()));
+    bool ok = mqtt_client.publish(TOPIC_VITALS_EVENTS, buffer);
+    if (ok) {
+        published_count++;
+    } else {
+        dropped_count++;
+    }
+    return ok;
 }
 
 void MqttPublisher::set_broker(const char* broker, uint16_t port) {
