@@ -159,5 +159,53 @@ class TelemetryExportService:
             ])
         return out.getvalue()
 
+    def export_json(self, session_uid: str, session: Session) -> Optional[Dict[str, Any]]:
+        return self.fetch_session_data(session_uid, session)
+
+    def export_summary_report(self, session_uid: str, session: Session) -> Optional[str]:
+        data = self.fetch_session_data(session_uid, session)
+        if not data:
+            return None
+        stats = data.get("statistics", {})
+        lines = [
+            "=======================================================",
+            "MEDICAL ASSISTIVE DROID - SESSION TELEMETRY REPORT",
+            "=======================================================",
+            f"Session UID:  {data.get('session_uid')}",
+            f"Patient Ref:  {data.get('patient_ref')}",
+            f"Start Time:   {data.get('start_time') or 'N/A'}",
+            f"End Time:     {data.get('end_time') or 'N/A'}",
+            f"Notes:        {data.get('notes') or 'None'}",
+            "",
+            "REGULATORY NOTICE:",
+            data.get("disclaimer", ""),
+            "",
+            "OBSERVATIONAL METRICS SUMMARY:",
+            f"  Total Vitals Records:          {stats.get('vitals_count', 0)}",
+            f"  Total Blood Pressure Records:  {stats.get('blood_pressure_count', 0)}",
+            f"  Total Events & Alerts:         {stats.get('events_count', 0)}",
+            "",
+            "SENSOR OBSERVATION RANGES:",
+            f"  Heart Rate (bpm):              Avg: {stats.get('heart_rate_avg') or 'N/A'} | Min: {stats.get('heart_rate_min') or 'N/A'} | Max: {stats.get('heart_rate_max') or 'N/A'}",
+            f"  SpO2 (%):                      Avg: {stats.get('spo2_avg') or 'N/A'} | Min: {stats.get('spo2_min') or 'N/A'} | Max: {stats.get('spo2_max') or 'N/A'}",
+            f"  Object Temperature (C):        Avg: {stats.get('temp_obj_avg') or 'N/A'} | Min: {stats.get('temp_obj_min') or 'N/A'} | Max: {stats.get('temp_obj_max') or 'N/A'}",
+            f"  Blood Pressure (mmHg):         Systolic Avg: {stats.get('systolic_avg') or 'N/A'} | Diastolic Avg: {stats.get('diastolic_avg') or 'N/A'}",
+            "",
+            "EVENT / ALERT LOG ENTRIES:",
+        ]
+        events = data.get("events", [])
+        if not events:
+            lines.append("  (No events recorded)")
+        else:
+            for ev in events[-10:]:
+                lines.append(f"  [{ev.get('timestamp')}] {ev.get('event_type')}: {ev.get('payload') or ''}")
+        lines.extend([
+            "",
+            "=======================================================",
+            "END OF TELEMETRY REPORT",
+            "=======================================================",
+        ])
+        return "\n".join(lines)
+
 
 export_service = TelemetryExportService()
