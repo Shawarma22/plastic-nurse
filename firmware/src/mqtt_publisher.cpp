@@ -13,6 +13,8 @@ MqttPublisher::MqttPublisher(const char* broker, uint16_t port, const char* clie
       last_reconnect_attempt_ms(0),
       published_count(0),
       dropped_count(0),
+      min_publish_interval_ms(MQTT_PROCESSED_RATE_LIMIT_MS),
+      last_publish_time_ms(0),
       mqtt_client(wifi_client) {
     buffer[0] = '\0';
 }
@@ -100,8 +102,12 @@ bool MqttPublisher::publish_status(const char* status) {
 }
 
 bool MqttPublisher::publish_processed(const SensorPacket& packet) {
+    if (!can_publish_now()) {
+        return false;
+    }
     if (!mqtt_client.connected()) {
         queue_offline_packet(packet);
+        last_publish_time_ms = millis();
         dropped_count++;
         return false;
     }
@@ -112,9 +118,11 @@ bool MqttPublisher::publish_processed(const SensorPacket& packet) {
     }
     bool ok = mqtt_client.publish(TOPIC_VITALS_PROCESSED, buffer);
     if (ok) {
+        last_publish_time_ms = millis();
         published_count++;
     } else {
         queue_offline_packet(packet);
+        last_publish_time_ms = millis();
         dropped_count++;
     }
     return ok;
@@ -199,6 +207,21 @@ size_t MqttPublisher::get_queued_packet_count() const {
 
 TelemetryRingBuffer<MQTT_OFFLINE_QUEUE_CAPACITY>& MqttPublisher::get_offline_queue() {
     return offline_queue;
+}
+
+void MqttPublisher::set_rate_limit_interval(uint32_t interval_ms) {
+    min_publish_interval_ms = interval_ms;
+}
+
+uint32_t MqttPublisher::get_rate_limit_interval() const {
+    return min_publish_interval_ms;
+}
+
+bool MqttPublisher::can_publish_now() const {
+    if (min_publish_interval_ms == 0 || last_publish_time_ms == 0) {
+        return true;
+    }
+    return (millis() - last_publish_time_ms) >= min_publish_interval_ms;
 }
 
 bool MqttPublisher::subscribe_commands() {

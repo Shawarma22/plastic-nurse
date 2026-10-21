@@ -47,6 +47,9 @@ public:
     size_t flush_offline_queue(size_t max_packets = 50);
     size_t get_queued_packet_count() const;
     TelemetryRingBuffer<MQTT_OFFLINE_QUEUE_CAPACITY>& get_offline_queue();
+    void set_rate_limit_interval(uint32_t interval_ms);
+    uint32_t get_rate_limit_interval() const;
+    bool can_publish_now() const;
 
 private:
     const char* broker_host;
@@ -56,6 +59,8 @@ private:
     uint32_t last_reconnect_attempt_ms;
     uint32_t published_count;
     uint32_t dropped_count;
+    uint32_t min_publish_interval_ms;
+    uint32_t last_publish_time_ms;
     WiFiClient wifi_client;
     PubSubClient mqtt_client;
     TelemetryRingBuffer<MQTT_OFFLINE_QUEUE_CAPACITY> offline_queue;
