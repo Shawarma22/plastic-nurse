@@ -1,3 +1,4 @@
+import json
 import queue
 from datetime import datetime, timezone
 from enum import Enum
@@ -133,6 +134,56 @@ class MqttIngestService:
         except Exception as exc:
             logger.warning(f"Failed to record droid status log: {exc}")
 
+    @staticmethod
+    def parse_vitals_payload(payload_bytes: bytes) -> Optional[Dict[str, Any]]:
+        try:
+            raw_str = payload_bytes.decode("utf-8", errors="ignore").strip()
+            data = json.loads(raw_str)
+            if not isinstance(data, dict):
+                return None
+            ppg = data.get("ppg", {})
+            ecg = data.get("ecg", {})
+            temp = data.get("temp", {})
+            dispenser = data.get("dispenser", {})
+            return {
+                "seq": int(data.get("seq", 0)),
+                "ts": int(data.get("ts", 0)),
+                "heart_rate": float(ppg.get("bpm", 0.0)) if ppg.get("bpm") is not None else None,
+                "spo2": float(ppg.get("spo2", 0.0)) if ppg.get("spo2") is not None else None,
+                "confidence": float(ppg.get("conf", 0.0)) if ppg.get("conf") is not None else None,
+                "finger_detected": bool(ppg.get("finger", False)),
+                "lead_off": bool(ecg.get("lead_off", False)),
+                "raw_ecg": int(ecg.get("raw", 0)) if ecg.get("raw") is not None else None,
+                "temperature_ambient": float(temp.get("amb", 0.0)) if temp.get("amb") is not None else None,
+                "temperature_object": float(temp.get("obj", 0.0)) if temp.get("obj") is not None else None,
+                "temperature_confidence": float(temp.get("conf", 0.0)) if temp.get("conf") is not None else None,
+                "target_present": bool(temp.get("target", False)),
+                "current_compartment": int(dispenser.get("comp", 0)) if dispenser.get("comp") is not None else None,
+                "target_compartment": int(dispenser.get("target", 0)) if dispenser.get("target") is not None else None,
+                "is_moving": bool(dispenser.get("moving", False)),
+                "is_homed": bool(dispenser.get("homed", False)),
+                "stall_detected": bool(dispenser.get("stall", False)),
+                "battery_mv": int(data.get("bat", 0)) if data.get("bat") is not None else None,
+                "status_flags": int(data.get("status", 0)) if data.get("status") is not None else None,
+            }
+        except Exception:
+            return None
+
+    def _handle_vitals_message(self, payload_bytes: bytes) -> None:
+        parsed = self.parse_vitals_payload(payload_bytes)
+        if not parsed:
+            return
+        self.received_packets_count += 1
+        self.last_telemetry_time = datetime.now(timezone.utc)
+        try:
+            self.vitals_queue.put_nowait(parsed)
+        except queue.Full:
+            try:
+                self.vitals_queue.get_nowait()
+                self.vitals_queue.put_nowait(parsed)
+            except Exception:
+                pass
+
     def _on_message(self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
         try:
             topic = getattr(msg, "topic", "")
@@ -140,6 +191,8 @@ class MqttIngestService:
             if topic == settings.MQTT_TOPIC_STATUS:
                 payload_str = payload_bytes.decode("utf-8", errors="ignore").strip()
                 self._handle_status_message(payload_str)
+            elif topic == settings.MQTT_TOPIC_VITALS_PROCESSED:
+                self._handle_vitals_message(payload_bytes)
         except Exception as exc:
             logger.warning(f"Error handling MQTT message on {getattr(msg, 'topic', 'unknown')}: {exc}")
 
