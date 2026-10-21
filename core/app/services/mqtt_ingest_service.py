@@ -3,8 +3,11 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, Dict, Any
 import paho.mqtt.client as mqtt
+from sqlmodel import Session
 from app.config import settings
 from app.logger import logger
+from app.db.session import engine
+from app.db.models import DroidStatusLog
 
 
 class MqttConnectionState(str, Enum):
@@ -111,8 +114,34 @@ class MqttIngestService:
         ]
         self.client.subscribe(topics)
 
+    def _handle_status_message(self, payload: str) -> None:
+        self.droid_online = payload.lower() == "online"
+        self.last_status_time = datetime.now(timezone.utc)
+        logger.info(f"Droid status updated: {payload}")
+        self._log_status_to_db(payload)
+
+    def _log_status_to_db(self, status: str) -> None:
+        try:
+            with Session(engine) as session:
+                log_entry = DroidStatusLog(
+                    timestamp=datetime.now(timezone.utc),
+                    status=status,
+                    details=f"Received via {settings.MQTT_TOPIC_STATUS}",
+                )
+                session.add(log_entry)
+                session.commit()
+        except Exception as exc:
+            logger.warning(f"Failed to record droid status log: {exc}")
+
     def _on_message(self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
-        pass
+        try:
+            topic = getattr(msg, "topic", "")
+            payload_bytes = getattr(msg, "payload", b"")
+            if topic == settings.MQTT_TOPIC_STATUS:
+                payload_str = payload_bytes.decode("utf-8", errors="ignore").strip()
+                self._handle_status_message(payload_str)
+        except Exception as exc:
+            logger.warning(f"Error handling MQTT message on {getattr(msg, 'topic', 'unknown')}: {exc}")
 
     def start(self) -> None:
         if self.running:
