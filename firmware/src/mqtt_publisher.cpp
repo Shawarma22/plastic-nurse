@@ -65,13 +65,20 @@ bool MqttPublisher::update() {
     if (mqtt_client.connected()) {
         state = MqttState::Connected;
         mqtt_client.loop();
+        if (!offline_queue.is_empty()) {
+            flush_offline_queue(10);
+        }
         return true;
     }
 
     uint32_t now = millis();
     if (now - last_reconnect_attempt_ms >= MQTT_RECONNECT_INTERVAL_MS) {
         last_reconnect_attempt_ms = now;
-        return connect();
+        bool ok = connect();
+        if (ok) {
+            flush_offline_queue(25);
+        }
+        return ok;
     }
 
     return false;
@@ -94,6 +101,7 @@ bool MqttPublisher::publish_status(const char* status) {
 
 bool MqttPublisher::publish_processed(const SensorPacket& packet) {
     if (!mqtt_client.connected()) {
+        queue_offline_packet(packet);
         dropped_count++;
         return false;
     }
@@ -106,6 +114,7 @@ bool MqttPublisher::publish_processed(const SensorPacket& packet) {
     if (ok) {
         published_count++;
     } else {
+        queue_offline_packet(packet);
         dropped_count++;
     }
     return ok;
@@ -156,6 +165,40 @@ uint32_t MqttPublisher::get_published_count() const {
 
 uint32_t MqttPublisher::get_dropped_count() const {
     return dropped_count;
+}
+
+bool MqttPublisher::queue_offline_packet(const SensorPacket& packet) {
+    return offline_queue.push(packet);
+}
+
+size_t MqttPublisher::flush_offline_queue(size_t max_packets) {
+    if (!mqtt_client.connected() || offline_queue.is_empty()) {
+        return 0;
+    }
+
+    size_t flushed = 0;
+    SensorPacket packet{};
+
+    while (flushed < max_packets && offline_queue.pop(packet)) {
+        size_t len = serializeSensorPacket(packet, buffer, sizeof(buffer));
+        if (len > 0 && mqtt_client.publish(TOPIC_VITALS_PROCESSED, buffer)) {
+            published_count++;
+            flushed++;
+        } else {
+            offline_queue.push(packet);
+            break;
+        }
+    }
+
+    return flushed;
+}
+
+size_t MqttPublisher::get_queued_packet_count() const {
+    return offline_queue.size();
+}
+
+TelemetryRingBuffer<MQTT_OFFLINE_QUEUE_CAPACITY>& MqttPublisher::get_offline_queue() {
+    return offline_queue;
 }
 
 bool MqttPublisher::subscribe_commands() {

@@ -7,6 +7,7 @@
 #include "config.h"
 #include "mqtt_topics.h"
 #include "sensor_types.h"
+#include "telemetry_ring_buffer.h"
 #include <WiFiClient.h>
 #include <PubSubClient.h>
 
@@ -42,6 +43,10 @@ public:
     uint32_t get_dropped_count() const;
     bool subscribe_commands();
     static void handle_incoming_message(char* topic, uint8_t* payload, unsigned int length);
+    bool queue_offline_packet(const SensorPacket& packet);
+    size_t flush_offline_queue(size_t max_packets = 50);
+    size_t get_queued_packet_count() const;
+    TelemetryRingBuffer<MQTT_OFFLINE_QUEUE_CAPACITY>& get_offline_queue();
 
 private:
     const char* broker_host;
@@ -53,6 +58,7 @@ private:
     uint32_t dropped_count;
     WiFiClient wifi_client;
     PubSubClient mqtt_client;
+    TelemetryRingBuffer<MQTT_OFFLINE_QUEUE_CAPACITY> offline_queue;
     char buffer[MQTT_BUFFER_SIZE];
 };
 
