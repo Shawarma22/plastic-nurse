@@ -1,3 +1,5 @@
+import csv
+import io
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from sqlmodel import Session, select
@@ -67,6 +69,95 @@ class TelemetryExportService:
             "blood_pressure": [b.model_dump() for b in bp_records],
             "events": [e.model_dump() for e in events],
         }
+
+    def export_csv(self, session_uid: str, session: Session) -> Optional[str]:
+        data = self.fetch_session_data(session_uid, session)
+        if not data:
+            return None
+        out = io.StringIO()
+        writer = csv.writer(out)
+        writer.writerow(["session_uid", session_uid])
+        writer.writerow(["patient_ref", data["patient_ref"]])
+        writer.writerow(["start_time", data["start_time"] or ""])
+        writer.writerow(["end_time", data["end_time"] or ""])
+        writer.writerow(["disclaimer", data["disclaimer"]])
+        writer.writerow([])
+        writer.writerow([
+            "record_type",
+            "timestamp",
+            "heart_rate",
+            "spo2",
+            "temperature_object",
+            "temperature_ambient",
+            "systolic",
+            "diastolic",
+            "mean_arterial_pressure",
+            "pulse_rate",
+            "confidence",
+            "finger_detected",
+            "lead_off",
+            "compartment",
+            "event_type",
+            "payload",
+        ])
+        for v in data["vitals"]:
+            writer.writerow([
+                "vital",
+                v.get("timestamp"),
+                v.get("heart_rate"),
+                v.get("spo2"),
+                v.get("temperature_object"),
+                v.get("temperature_ambient"),
+                "",
+                "",
+                "",
+                "",
+                v.get("confidence"),
+                v.get("finger_detected"),
+                v.get("lead_off"),
+                v.get("current_compartment"),
+                "",
+                "",
+            ])
+        for b in data["blood_pressure"]:
+            writer.writerow([
+                "blood_pressure",
+                b.get("timestamp"),
+                "",
+                "",
+                "",
+                "",
+                b.get("systolic"),
+                b.get("diastolic"),
+                b.get("mean_arterial_pressure"),
+                b.get("pulse_rate"),
+                "",
+                "",
+                "",
+                "",
+                "",
+                b.get("unit"),
+            ])
+        for e in data["events"]:
+            writer.writerow([
+                "event",
+                e.get("timestamp"),
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                e.get("event_type"),
+                e.get("payload"),
+            ])
+        return out.getvalue()
 
 
 export_service = TelemetryExportService()
