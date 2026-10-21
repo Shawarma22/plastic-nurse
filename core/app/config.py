@@ -21,6 +21,16 @@ class Settings(BaseSettings):
     CAMERA_HEIGHT: int = 480
     MQTT_BROKER_HOST: str = "localhost"
     MQTT_BROKER_PORT: int = 1883
+    MQTT_CLIENT_ID: str = "droid-rpi-core"
+    MQTT_TOPIC_STATUS: str = "droid/status"
+    MQTT_TOPIC_VITALS_PROCESSED: str = "droid/vitals/processed"
+    MQTT_TOPIC_VITALS_RAW: str = "droid/vitals/raw"
+    MQTT_TOPIC_VITALS_EVENTS: str = "droid/vitals/events"
+    MQTT_TOPIC_CMD_DISPENSE: str = "droid/cmd/dispense"
+    MQTT_INGEST_ENABLED: bool = True
+    MQTT_INGEST_BATCH_SIZE: int = 25
+    MQTT_INGEST_FLUSH_INTERVAL_SEC: float = 1.0
+    MQTT_KEEPALIVE_SEC: int = 60
     PIN_MOTOR_L_FWD: int = 17
     PIN_MOTOR_L_BWD: int = 27
     PIN_MOTOR_L_PWM: int = 18
