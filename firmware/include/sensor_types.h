@@ -59,4 +59,28 @@ struct SensorPacket {
     uint8_t status_flags;
 };
 
+static constexpr uint8_t WAVEFORM_MAGIC_0 = 0xAA;
+static constexpr uint8_t WAVEFORM_MAGIC_1 = 0x55;
+static constexpr uint16_t WAVEFORM_BATCH_VERSION = 1;
+static constexpr size_t WAVEFORM_BATCH_MAX_SAMPLES = 32;
+
+#pragma pack(push, 1)
+struct WaveformSample {
+    uint16_t ecg_raw;
+    uint32_t ir_raw;
+    uint32_t red_raw;
+    uint8_t flags;
+};
+
+struct WaveformBatch {
+    uint8_t magic[2];
+    uint16_t version;
+    uint32_t batch_seq;
+    uint32_t start_timestamp_ms;
+    uint16_t sample_interval_ms;
+    uint16_t sample_count;
+    WaveformSample samples[WAVEFORM_BATCH_MAX_SAMPLES];
+};
+#pragma pack(pop)
+
 #endif

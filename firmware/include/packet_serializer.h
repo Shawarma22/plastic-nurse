@@ -7,5 +7,7 @@
 
 size_t serializeSensorPacket(const SensorPacket& packet, char* buffer, size_t bufferSize);
 bool deserializeSensorPacket(const char* json, SensorPacket& packet);
+size_t serializeWaveformBatch(const WaveformBatch& batch, uint8_t* buffer, size_t bufferSize);
+bool deserializeWaveformBatch(const uint8_t* buffer, size_t length, WaveformBatch& batch);
 
 #endif

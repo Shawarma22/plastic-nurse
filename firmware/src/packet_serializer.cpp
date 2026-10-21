@@ -1,5 +1,6 @@
 #include "packet_serializer.h"
 #include <ArduinoJson.h>
+#include <string.h>
 
 size_t serializeSensorPacket(const SensorPacket& packet, char* buffer, size_t bufferSize) {
     StaticJsonDocument<512> doc;
@@ -84,5 +85,61 @@ bool deserializeSensorPacket(const char* json, SensorPacket& packet) {
     packet.battery_mv = doc["bat"] | 0;
     packet.status_flags = doc["status"] | 0;
 
+    return true;
+}
+
+size_t serializeWaveformBatch(const WaveformBatch& batch, uint8_t* buffer, size_t bufferSize) {
+    if (buffer == nullptr || batch.sample_count > WAVEFORM_BATCH_MAX_SAMPLES) {
+        return 0;
+    }
+    size_t payload_len = 16 + (batch.sample_count * sizeof(WaveformSample));
+    if (bufferSize < payload_len) {
+        return 0;
+    }
+    uint8_t m0 = WAVEFORM_MAGIC_0;
+    uint8_t m1 = WAVEFORM_MAGIC_1;
+    uint16_t ver = WAVEFORM_BATCH_VERSION;
+    memcpy(buffer, &m0, 1);
+    memcpy(buffer + 1, &m1, 1);
+    memcpy(buffer + 2, &ver, sizeof(ver));
+    memcpy(buffer + 4, &batch.batch_seq, sizeof(batch.batch_seq));
+    memcpy(buffer + 8, &batch.start_timestamp_ms, sizeof(batch.start_timestamp_ms));
+    memcpy(buffer + 12, &batch.sample_interval_ms, sizeof(batch.sample_interval_ms));
+    memcpy(buffer + 14, &batch.sample_count, sizeof(batch.sample_count));
+    if (batch.sample_count > 0) {
+        memcpy(buffer + 16, batch.samples, batch.sample_count * sizeof(WaveformSample));
+    }
+    return payload_len;
+}
+
+bool deserializeWaveformBatch(const uint8_t* buffer, size_t length, WaveformBatch& batch) {
+    if (buffer == nullptr || length < 16) {
+        return false;
+    }
+    if (buffer[0] != WAVEFORM_MAGIC_0 || buffer[1] != WAVEFORM_MAGIC_1) {
+        return false;
+    }
+    uint16_t version = 0;
+    memcpy(&version, buffer + 2, sizeof(version));
+    if (version != WAVEFORM_BATCH_VERSION) {
+        return false;
+    }
+    memcpy(&batch.magic[0], buffer, 2);
+    batch.version = version;
+    memcpy(&batch.batch_seq, buffer + 4, sizeof(batch.batch_seq));
+    memcpy(&batch.start_timestamp_ms, buffer + 8, sizeof(batch.start_timestamp_ms));
+    memcpy(&batch.sample_interval_ms, buffer + 12, sizeof(batch.sample_interval_ms));
+    memcpy(&batch.sample_count, buffer + 14, sizeof(batch.sample_count));
+
+    if (batch.sample_count > WAVEFORM_BATCH_MAX_SAMPLES) {
+        return false;
+    }
+    size_t expected_len = 16 + (batch.sample_count * sizeof(WaveformSample));
+    if (length < expected_len) {
+        return false;
+    }
+    if (batch.sample_count > 0) {
+        memcpy(batch.samples, buffer + 16, batch.sample_count * sizeof(WaveformSample));
+    }
     return true;
 }
