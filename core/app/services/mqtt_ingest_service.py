@@ -63,13 +63,81 @@ class MqttIngestService:
             "events_queue_size": self.events_queue.qsize(),
         }
 
+    def _init_client(self) -> None:
+        if hasattr(mqtt, "CallbackAPIVersion"):
+            self.client = mqtt.Client(
+                mqtt.CallbackAPIVersion.VERSION2,
+                client_id=self.client_id,
+                protocol=mqtt.MQTTv311,
+            )
+        else:
+            self.client = mqtt.Client(
+                client_id=self.client_id,
+                protocol=mqtt.MQTTv311,
+            )
+        self.client.on_connect = self._on_connect
+        self.client.on_disconnect = self._on_disconnect
+        self.client.on_message = self._on_message
+        self.client.reconnect_delay_set(min_delay=1, max_delay=30)
+
+    def _on_connect(
+        self, client: mqtt.Client, userdata: Any, flags: Any, rc: Any, *args: Any, **kwargs: Any
+    ) -> None:
+        code = getattr(rc, "value", rc)
+        if code == 0:
+            self.state = MqttConnectionState.CONNECTED
+            logger.info(f"MQTT subscriber connected to {self.broker}:{self.port}")
+            self._subscribe_topics()
+        else:
+            self.state = MqttConnectionState.FAILED
+            logger.warning(f"MQTT subscriber connect failed with code {code}")
+
+    def _on_disconnect(self, client: mqtt.Client, userdata: Any, *args: Any, **kwargs: Any) -> None:
+        if self.running:
+            self.state = MqttConnectionState.RECONNECTING
+        else:
+            self.state = MqttConnectionState.DISCONNECTED
+        self.droid_online = False
+        logger.info("MQTT subscriber disconnected")
+
+    def _subscribe_topics(self) -> None:
+        if not self.client:
+            return
+        topics = [
+            (settings.MQTT_TOPIC_STATUS, 1),
+            (settings.MQTT_TOPIC_VITALS_PROCESSED, 0),
+            (settings.MQTT_TOPIC_VITALS_RAW, 0),
+            (settings.MQTT_TOPIC_VITALS_EVENTS, 0),
+        ]
+        self.client.subscribe(topics)
+
+    def _on_message(self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
+        pass
+
     def start(self) -> None:
+        if self.running:
+            return
         self.running = True
         self.state = MqttConnectionState.CONNECTING
+        self._init_client()
+        try:
+            if self.client:
+                self.client.connect_async(self.broker, self.port, keepalive=settings.MQTT_KEEPALIVE_SEC)
+                self.client.loop_start()
+        except Exception as exc:
+            self.state = MqttConnectionState.RECONNECTING
+            logger.warning(f"MQTT async connect initial attempt failed: {exc}")
 
     def stop(self) -> None:
         self.running = False
+        if self.client:
+            try:
+                self.client.disconnect()
+                self.client.loop_stop()
+            except Exception:
+                pass
         self.state = MqttConnectionState.DISCONNECTED
+        self.droid_online = False
 
 
 mqtt_ingest_service = MqttIngestService()
