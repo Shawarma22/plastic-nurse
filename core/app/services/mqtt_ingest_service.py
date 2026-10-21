@@ -270,6 +270,17 @@ class MqttIngestService:
                 self.waveform_queue.put_nowait(parsed)
             except Exception:
                 pass
+        ws_waveform = {
+            "type": "waveform_batch",
+            "session_uid": self.active_session_uid or "default",
+            "batch_seq": parsed.get("batch_seq"),
+            "start_timestamp_ms": parsed.get("start_timestamp_ms"),
+            "sample_interval_ms": parsed.get("sample_interval_ms"),
+            "sample_count": parsed.get("sample_count"),
+            "samples": parsed.get("samples"),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        self._broadcast_telemetry(ws_waveform)
 
     def _handle_events_message(self, payload_bytes: bytes) -> None:
         try:
@@ -294,6 +305,15 @@ class MqttIngestService:
                     self.events_queue.put_nowait(item)
                 except Exception:
                     pass
+            ws_event = {
+                "type": "hardware_event",
+                "session_uid": self.active_session_uid or "default",
+                "event_type": event_type,
+                "details": details,
+                "ts": ts,
+                "timestamp": item["timestamp"].isoformat(),
+            }
+            self._broadcast_state(ws_event)
         except Exception:
             pass
 
