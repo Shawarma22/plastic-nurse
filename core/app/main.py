@@ -11,6 +11,8 @@ from app.auth.security import get_password_hash
 from app.services.camera_service import camera_service
 from app.services.job_queue import job_queue_service
 from app.services.mqtt_ingest_service import mqtt_ingest_service
+from app.services.ble_bp_service import ble_bp_service
+from app.services.alert_engine import alert_engine
 from app.routers import auth, motors, door, camera, vitals, jobs, ws, perception, telemetry
 
 @asynccontextmanager
@@ -43,11 +45,18 @@ async def lifespan(app: FastAPI):
 
     camera_service.start()
     job_queue_service.start()
-    mqtt_ingest_service.set_event_loop(asyncio.get_running_loop())
+    loop = asyncio.get_running_loop()
+    mqtt_ingest_service.set_event_loop(loop)
+    ble_bp_service.set_event_loop(loop)
+    alert_engine.set_event_loop(loop)
     if settings.MQTT_INGEST_ENABLED:
         mqtt_ingest_service.start()
+    if settings.BLE_BP_ENABLED:
+        ble_bp_service.start()
     logger.info(f"Medical Droid Core started in {settings.DROID_HAL} mode on port {settings.API_PORT}")
     yield
+    if settings.BLE_BP_ENABLED:
+        ble_bp_service.stop()
     if settings.MQTT_INGEST_ENABLED:
         mqtt_ingest_service.stop()
     camera_service.stop()
