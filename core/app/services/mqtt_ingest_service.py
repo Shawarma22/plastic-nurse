@@ -1,3 +1,4 @@
+import asyncio
 import json
 import queue
 import threading
@@ -12,6 +13,7 @@ from app.logger import logger
 from app.db.session import engine
 from app.db.models import DroidStatusLog, Vital, WaveformBatchRecord, Event
 from app.services.waveform_parser import WaveformBatchParser
+from app.services.ws_manager import ws_manager
 
 
 class MqttConnectionState(str, Enum):
@@ -43,6 +45,7 @@ class MqttIngestService:
         self.persisted_batches_count = 0
         self.persisted_events_count = 0
         self.active_session_uid: Optional[str] = None
+        self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.client: Optional[mqtt.Client] = None
         self.running = False
         self._worker_thread: Optional[threading.Thread] = None
@@ -61,6 +64,29 @@ class MqttIngestService:
 
     def set_active_session_uid(self, uid: Optional[str]) -> None:
         self.active_session_uid = uid
+
+    def set_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        self.loop = loop
+
+    def _broadcast_telemetry(self, data: Dict[str, Any]) -> None:
+        if self.loop and self.loop.is_running():
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    ws_manager.broadcast_telemetry(data),
+                    self.loop,
+                )
+            except Exception as exc:
+                logger.debug(f"Failed to bridge telemetry to websocket: {exc}")
+
+    def _broadcast_state(self, data: Dict[str, Any]) -> None:
+        if self.loop and self.loop.is_running():
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    ws_manager.broadcast_state(data),
+                    self.loop,
+                )
+            except Exception:
+                pass
 
     def get_metrics(self) -> Dict[str, Any]:
         return {
@@ -135,6 +161,12 @@ class MqttIngestService:
         self.last_status_time = datetime.now(timezone.utc)
         logger.info(f"Droid status updated: {payload}")
         self._log_status_to_db(payload)
+        self._broadcast_state({
+            "type": "droid_status",
+            "status": payload.lower(),
+            "droid_online": self.droid_online,
+            "timestamp": self.last_status_time.isoformat(),
+        })
 
     def _log_status_to_db(self, status: str) -> None:
         try:
@@ -198,6 +230,31 @@ class MqttIngestService:
                 self.vitals_queue.put_nowait(parsed)
             except Exception:
                 pass
+        ws_payload = {
+            "type": "vitals_update",
+            "session_uid": self.active_session_uid or "default",
+            "timestamp": self.last_telemetry_time.isoformat(),
+            "seq": parsed.get("seq"),
+            "heart_rate": parsed.get("heart_rate"),
+            "spo2": parsed.get("spo2"),
+            "confidence": parsed.get("confidence"),
+            "finger_detected": parsed.get("finger_detected"),
+            "temperature_object": parsed.get("temperature_object"),
+            "temperature_ambient": parsed.get("temperature_ambient"),
+            "temperature_confidence": parsed.get("temperature_confidence"),
+            "target_present": parsed.get("target_present"),
+            "dispenser": {
+                "current_compartment": parsed.get("current_compartment"),
+                "target_compartment": parsed.get("target_compartment"),
+                "is_moving": parsed.get("is_moving"),
+                "is_homed": parsed.get("is_homed"),
+                "stall_detected": parsed.get("stall_detected"),
+            },
+            "battery_mv": parsed.get("battery_mv"),
+            "status_flags": parsed.get("status_flags"),
+            "droid_online": self.droid_online,
+        }
+        self._broadcast_telemetry(ws_payload)
 
     def _handle_raw_waveform_message(self, payload_bytes: bytes) -> None:
         parsed = WaveformBatchParser.unpack(payload_bytes)
