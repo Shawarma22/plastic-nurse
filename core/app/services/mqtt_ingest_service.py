@@ -10,7 +10,7 @@ from sqlmodel import Session
 from app.config import settings
 from app.logger import logger
 from app.db.session import engine
-from app.db.models import DroidStatusLog, Vital, WaveformBatchRecord
+from app.db.models import DroidStatusLog, Vital, WaveformBatchRecord, Event
 from app.services.waveform_parser import WaveformBatchParser
 
 
@@ -41,6 +41,7 @@ class MqttIngestService:
         self.received_events_count = 0
         self.persisted_vitals_count = 0
         self.persisted_batches_count = 0
+        self.persisted_events_count = 0
         self.active_session_uid: Optional[str] = None
         self.client: Optional[mqtt.Client] = None
         self.running = False
@@ -75,6 +76,7 @@ class MqttIngestService:
             "received_events_count": self.received_events_count,
             "persisted_vitals_count": self.persisted_vitals_count,
             "persisted_batches_count": self.persisted_batches_count,
+            "persisted_events_count": self.persisted_events_count,
             "vitals_queue_size": self.vitals_queue.qsize(),
             "waveform_queue_size": self.waveform_queue.qsize(),
             "events_queue_size": self.events_queue.qsize(),
@@ -212,6 +214,32 @@ class MqttIngestService:
             except Exception:
                 pass
 
+    def _handle_events_message(self, payload_bytes: bytes) -> None:
+        try:
+            raw_str = payload_bytes.decode("utf-8", errors="ignore").strip()
+            data = json.loads(raw_str)
+            if not isinstance(data, dict):
+                return
+            event_type = str(data.get("event", "UNKNOWN"))
+            details = str(data.get("details", ""))
+            ts = int(data.get("ts", 0))
+            self.received_events_count += 1
+            item = {
+                "event_type": event_type,
+                "payload": json.dumps({"details": details, "ts": ts}),
+                "timestamp": datetime.now(timezone.utc),
+            }
+            try:
+                self.events_queue.put_nowait(item)
+            except queue.Full:
+                try:
+                    self.events_queue.get_nowait()
+                    self.events_queue.put_nowait(item)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     def _on_message(self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
         try:
             topic = getattr(msg, "topic", "")
@@ -223,6 +251,8 @@ class MqttIngestService:
                 self._handle_vitals_message(payload_bytes)
             elif topic == settings.MQTT_TOPIC_VITALS_RAW:
                 self._handle_raw_waveform_message(payload_bytes)
+            elif topic == settings.MQTT_TOPIC_VITALS_EVENTS:
+                self._handle_events_message(payload_bytes)
         except Exception as exc:
             logger.warning(f"Error handling MQTT message on {getattr(msg, 'topic', 'unknown')}: {exc}")
 
@@ -300,17 +330,46 @@ class MqttIngestService:
             logger.warning(f"Error persisting waveform batch: {exc}")
             return 0
 
+    def flush_events_batch(self, max_items: int = 50) -> int:
+        batches: List[Dict[str, Any]] = []
+        while len(batches) < max_items:
+            try:
+                item = self.events_queue.get_nowait()
+                batches.append(item)
+            except queue.Empty:
+                break
+        if not batches:
+            return 0
+        try:
+            with Session(engine) as session:
+                for ev in batches:
+                    record = Event(
+                        session_uid=self.active_session_uid,
+                        timestamp=ev.get("timestamp", datetime.now(timezone.utc)),
+                        event_type=str(ev.get("event_type", "UNKNOWN")),
+                        payload=ev.get("payload"),
+                    )
+                    session.add(record)
+                session.commit()
+            self.persisted_events_count += len(batches)
+            return len(batches)
+        except Exception as exc:
+            logger.warning(f"Error persisting events batch: {exc}")
+            return 0
+
     def _vitals_persistence_worker(self) -> None:
         while self.running:
             try:
                 self.flush_vitals_batch(settings.MQTT_INGEST_BATCH_SIZE)
                 self.flush_waveform_batch(settings.MQTT_INGEST_BATCH_SIZE)
+                self.flush_events_batch(settings.MQTT_INGEST_BATCH_SIZE)
             except Exception as exc:
                 logger.warning(f"Unexpected error in vitals worker: {exc}")
             time.sleep(settings.MQTT_INGEST_FLUSH_INTERVAL_SEC)
         try:
             self.flush_vitals_batch(100)
             self.flush_waveform_batch(100)
+            self.flush_events_batch(100)
         except Exception:
             pass
 
