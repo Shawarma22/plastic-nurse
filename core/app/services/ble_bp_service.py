@@ -4,9 +4,12 @@ import threading
 import time
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+from sqlmodel import Session
 from app.config import settings
 from app.logger import logger
+from app.db.session import engine
+from app.db.models import BloodPressureRecord
 from app.services.ble_bp_parser import BleBloodPressureParser
 
 try:
@@ -35,6 +38,7 @@ class BleBloodPressureService:
         self.measurement_queue: queue.Queue = queue.Queue(maxsize=200)
         self.running = False
         self._thread: Optional[threading.Thread] = None
+        self._persistence_thread: Optional[threading.Thread] = None
         self.mock_mode = (settings.DROID_HAL == "mock") or (bleak is None)
         self.last_measurement: Optional[Dict[str, Any]] = None
 
@@ -89,6 +93,38 @@ class BleBloodPressureService:
                 pass
         return record_data
 
+    def flush_measurements_batch(self, limit: int = 25) -> int:
+        batch: List[Dict[str, Any]] = []
+        for _ in range(limit):
+            try:
+                item = self.measurement_queue.get_nowait()
+                batch.append(item)
+            except queue.Empty:
+                break
+        if not batch:
+            return 0
+        try:
+            with Session(engine) as session:
+                for item in batch:
+                    record = BloodPressureRecord(
+                        session_uid=item.get("session_uid") or self.active_session_uid,
+                        timestamp=item.get("timestamp", datetime.now(timezone.utc)),
+                        systolic=item["systolic"],
+                        diastolic=item["diastolic"],
+                        mean_arterial_pressure=item.get("mean_arterial_pressure"),
+                        pulse_rate=item.get("pulse_rate"),
+                        unit=item.get("unit", "mmHg"),
+                        device_id=item.get("device_id"),
+                        status_flags=item.get("status_flags"),
+                    )
+                    session.add(record)
+                session.commit()
+            self.persisted_measurements_count += len(batch)
+            return len(batch)
+        except Exception as exc:
+            logger.warning(f"Error persisting blood pressure batch: {exc}")
+            return 0
+
     def trigger_mock_measurement(
         self,
         systolic: float = 120.0,
@@ -124,12 +160,26 @@ class BleBloodPressureService:
         self.connected_device_name = None
         self.connected_device_address = None
 
+    def _persistence_worker(self) -> None:
+        while self.running:
+            try:
+                self.flush_measurements_batch(25)
+            except Exception as exc:
+                logger.warning(f"Unexpected error in ble bp persistence worker: {exc}")
+            time.sleep(1.0)
+        try:
+            self.flush_measurements_batch(100)
+        except Exception:
+            pass
+
     def start(self) -> None:
         if self.running or not settings.BLE_BP_ENABLED:
             return
         self.running = True
         self._thread = threading.Thread(target=self._mock_scanner_worker, daemon=True)
         self._thread.start()
+        self._persistence_thread = threading.Thread(target=self._persistence_worker, daemon=True)
+        self._persistence_thread.start()
 
     def stop(self) -> None:
         self.running = False
@@ -139,6 +189,12 @@ class BleBloodPressureService:
             except Exception:
                 pass
         self._thread = None
+        if self._persistence_thread and self._persistence_thread.is_alive():
+            try:
+                self._persistence_thread.join(timeout=2.0)
+            except Exception:
+                pass
+        self._persistence_thread = None
         self.state = BleConnectionState.DISCONNECTED
         self.connected_device_name = None
         self.connected_device_address = None
