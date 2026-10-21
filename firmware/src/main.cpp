@@ -58,6 +58,16 @@ void setup() {
         &xTaskDispense,
         1
     );
+
+    xTaskCreatePinnedToCore(
+        taskTelemetry,
+        "telemetry",
+        STACK_SIZE_NETWORK,
+        nullptr,
+        PRIORITY_NETWORK,
+        &xTaskTelemetry,
+        0
+    );
 }
 
 void loop() {
