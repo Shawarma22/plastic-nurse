@@ -75,3 +75,17 @@ class DroidStatusLog(SQLModel, table=True):
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     status: str = Field(index=True)
     details: Optional[str] = None
+
+class BloodPressureRecord(SQLModel, table=True):
+    __tablename__ = "blood_pressure_records"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_uid: Optional[str] = Field(default=None, index=True)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    systolic: float = Field(index=True)
+    diastolic: float = Field(index=True)
+    mean_arterial_pressure: Optional[float] = None
+    pulse_rate: Optional[float] = None
+    unit: str = Field(default="mmHg")
+    device_id: Optional[str] = None
+    status_flags: Optional[int] = None
