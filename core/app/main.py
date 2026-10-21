@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,7 +10,8 @@ from app.db.models import User
 from app.auth.security import get_password_hash
 from app.services.camera_service import camera_service
 from app.services.job_queue import job_queue_service
-from app.routers import auth, motors, door, camera, vitals, jobs, ws, perception
+from app.services.mqtt_ingest_service import mqtt_ingest_service
+from app.routers import auth, motors, door, camera, vitals, jobs, ws, perception, telemetry
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -41,8 +43,13 @@ async def lifespan(app: FastAPI):
 
     camera_service.start()
     job_queue_service.start()
+    mqtt_ingest_service.set_event_loop(asyncio.get_running_loop())
+    if settings.MQTT_INGEST_ENABLED:
+        mqtt_ingest_service.start()
     logger.info(f"Medical Droid Core started in {settings.DROID_HAL} mode on port {settings.API_PORT}")
     yield
+    if settings.MQTT_INGEST_ENABLED:
+        mqtt_ingest_service.stop()
     camera_service.stop()
     await job_queue_service.stop()
     logger.info("Medical Droid Core shutdown complete")
@@ -70,6 +77,7 @@ app.include_router(vitals.router)
 app.include_router(jobs.router)
 app.include_router(ws.router)
 app.include_router(perception.router)
+app.include_router(telemetry.router)
 
 @app.get("/health", tags=["system"])
 def health_check():
