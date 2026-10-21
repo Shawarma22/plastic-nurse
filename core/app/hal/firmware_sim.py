@@ -2,9 +2,93 @@ import argparse
 import json
 import math
 import random
+import struct
 import sys
 import time
-from typing import Dict, Any, Iterator
+from typing import Dict, Any, Iterator, Optional, List
+
+
+TOPIC_STATUS = "droid/status"
+TOPIC_VITALS_PROCESSED = "droid/vitals/processed"
+TOPIC_VITALS_RAW = "droid/vitals/raw"
+TOPIC_VITALS_EVENTS = "droid/vitals/events"
+TOPIC_CMD_DISPENSE = "droid/cmd/dispense"
+
+
+class MockMqttClient:
+    def __init__(
+        self,
+        broker: str = "192.168.4.1",
+        port: int = 1883,
+        client_id: str = "droid-esp32-vitals",
+    ):
+        self.broker = broker
+        self.port = port
+        self.client_id = client_id
+        self.connected = False
+        self.published_messages: List[Dict[str, Any]] = []
+        self.subscriptions: set[str] = set()
+
+    def connect(self) -> bool:
+        self.connected = True
+        self.published_messages.append(
+            {"topic": TOPIC_STATUS, "payload": "online", "retain": True, "qos": 1}
+        )
+        return True
+
+    def disconnect(self) -> None:
+        if self.connected:
+            self.published_messages.append(
+                {"topic": TOPIC_STATUS, "payload": "offline", "retain": True, "qos": 1}
+            )
+        self.connected = False
+
+    def is_connected(self) -> bool:
+        return self.connected
+
+    def subscribe(self, topic: str) -> bool:
+        self.subscriptions.add(topic)
+        return True
+
+    def publish(
+        self,
+        topic: str,
+        payload: Any,
+        retain: bool = False,
+        qos: int = 0,
+    ) -> bool:
+        if not self.connected:
+            return False
+        self.published_messages.append(
+            {"topic": topic, "payload": payload, "retain": retain, "qos": qos}
+        )
+        return True
+
+    def handle_command(
+        self,
+        topic: str,
+        payload: str,
+        sim: "FirmwareSimulator",
+    ) -> bool:
+        if topic != TOPIC_CMD_DISPENSE:
+            return False
+        try:
+            data = json.loads(payload)
+            cmd = data.get("cmd", "")
+            if cmd in ("dispense", "move"):
+                return sim.move_to_compartment(data.get("compartment", 0))
+            elif cmd == "home":
+                sim.home_dispenser()
+                return True
+            elif cmd in ("stop", "estop"):
+                sim.dispenser_moving = False
+                return True
+            elif cmd in ("clear", "clear_stall"):
+                sim.clear_stall()
+                return True
+        except Exception:
+            return False
+        return False
 
 
 class FirmwareSimulator:
@@ -191,6 +275,83 @@ class FirmwareSimulator:
             yield self.serialize_packet(packet)
             if interval_s > 0:
                 time.sleep(interval_s)
+
+    def generate_raw_waveform_batch(self, sample_count: int = 32) -> bytes:
+        sample_count = max(1, min(32, sample_count))
+        elapsed = time.monotonic() - self.start_time
+        ts_ms = int(elapsed * 1000)
+        interval_ms = int(1000 / max(1, self.sample_rate_hz))
+        header = struct.pack(
+            "<BBHIIHH",
+            0xAA,
+            0x55,
+            1,
+            self.seq,
+            ts_ms,
+            interval_ms,
+            sample_count,
+        )
+        samples_bytes = bytearray()
+        for i in range(sample_count):
+            t = elapsed + (i * (interval_ms / 1000.0))
+            if self.disconnect_ecg:
+                ecg_val = 0
+                flags = 0x08
+            else:
+                ecg_val = self.generate_ecg_sample(t)
+                flags = 0x02
+            if self.disconnect_ppg:
+                ir_raw = 0
+                red_raw = 0
+            else:
+                phase = t * 2.0 * math.pi * (self.base_bpm / 60.0)
+                ppg_wave = math.sin(phase) * 0.5 + 0.5
+                ir_raw = int(250000 + 15000 * ppg_wave)
+                red_raw = int(240000 + 12000 * ppg_wave)
+                flags |= 0x01 | 0x04
+            samples_bytes.extend(struct.pack("<HIIB", ecg_val, ir_raw, red_raw, flags))
+        return bytes(header + samples_bytes)
+
+    def generate_event_packet(self, event_type: str, details: str = "") -> Dict[str, Any]:
+        elapsed = time.monotonic() - self.start_time
+        return {
+            "event": event_type,
+            "details": details,
+            "ts": int(elapsed * 1000),
+        }
+
+    def create_mock_publisher(
+        self,
+        broker: str = "192.168.4.1",
+        port: int = 1883,
+    ) -> MockMqttClient:
+        return MockMqttClient(broker=broker, port=port)
+
+    def publish_telemetry(
+        self,
+        client: MockMqttClient,
+        packet: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        if packet is None:
+            packet = self.generate_packet()
+        return client.publish(TOPIC_VITALS_PROCESSED, self.serialize_packet(packet))
+
+    def publish_waveform(
+        self,
+        client: MockMqttClient,
+        sample_count: int = 32,
+    ) -> bool:
+        batch = self.generate_raw_waveform_batch(sample_count=sample_count)
+        return client.publish(TOPIC_VITALS_RAW, batch)
+
+    def publish_event(
+        self,
+        client: MockMqttClient,
+        event_type: str,
+        details: str = "",
+    ) -> bool:
+        event = self.generate_event_packet(event_type, details)
+        return client.publish(TOPIC_VITALS_EVENTS, json.dumps(event))
 
 
 def main() -> None:
