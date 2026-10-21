@@ -1,6 +1,16 @@
 import json
+import struct
+from collections import deque
 from pathlib import Path
-from app.hal.firmware_sim import FirmwareSimulator
+from app.hal.firmware_sim import (
+    FirmwareSimulator,
+    MockMqttClient,
+    TOPIC_STATUS,
+    TOPIC_VITALS_PROCESSED,
+    TOPIC_VITALS_RAW,
+    TOPIC_VITALS_EVENTS,
+    TOPIC_CMD_DISPENSE,
+)
 
 
 def test_packet_structure():
@@ -132,6 +142,10 @@ def test_firmware_file_integrity():
         "mlx90614.h",
         "temp_filters.h",
         "stepper.h",
+        "mqtt_topics.h",
+        "network_manager.h",
+        "mqtt_publisher.h",
+        "telemetry_ring_buffer.h",
     ]
     for header in required_headers:
         path = firmware_dir / "include" / header
@@ -152,6 +166,9 @@ def test_firmware_file_integrity():
         "stepper.cpp",
         "temp_task.cpp",
         "dispense_task.cpp",
+        "network_manager.cpp",
+        "mqtt_publisher.cpp",
+        "telemetry_task.cpp",
     ]
     for src in required_src:
         path = firmware_dir / "src" / src
@@ -298,5 +315,151 @@ def test_temperature_plausibility_and_confidence_logic():
     assert calc_confidence(25.0, 25.5) == 0.05
     assert calc_confidence(24.0, 24.5) == 0.0
     assert calc_confidence(24.0, 50.0) == 0.0
+
+
+def test_mock_mqtt_client_lifecycle():
+    client = MockMqttClient()
+    assert client.is_connected() is False
+
+    assert client.connect() is True
+    assert client.is_connected() is True
+    assert len(client.published_messages) == 1
+    assert client.published_messages[0]["topic"] == TOPIC_STATUS
+    assert client.published_messages[0]["payload"] == "online"
+
+    assert client.subscribe(TOPIC_CMD_DISPENSE) is True
+    assert TOPIC_CMD_DISPENSE in client.subscriptions
+
+    client.disconnect()
+    assert client.is_connected() is False
+    assert client.published_messages[-1]["topic"] == TOPIC_STATUS
+    assert client.published_messages[-1]["payload"] == "offline"
+
+
+def test_mock_mqtt_telemetry_publication():
+    sim = FirmwareSimulator(include_temp=True, include_dispenser=True)
+    client = sim.create_mock_publisher()
+    client.connect()
+
+    ok = sim.publish_telemetry(client)
+    assert ok is True
+    assert len(client.published_messages) == 2
+
+    msg = client.published_messages[1]
+    assert msg["topic"] == TOPIC_VITALS_PROCESSED
+    payload = json.loads(msg["payload"])
+    assert "seq" in payload
+    assert "ppg" in payload
+    assert "ecg" in payload
+    assert "temp" in payload
+    assert "dispenser" in payload
+
+
+def test_mock_mqtt_raw_waveform_batch_serialization():
+    sim = FirmwareSimulator()
+    client = sim.create_mock_publisher()
+    client.connect()
+
+    ok = sim.publish_waveform(client, sample_count=32)
+    assert ok is True
+
+    raw_msg = client.published_messages[-1]
+    assert raw_msg["topic"] == TOPIC_VITALS_RAW
+    data = raw_msg["payload"]
+    assert isinstance(data, bytes)
+    assert len(data) == 16 + (32 * 11)
+
+    magic0, magic1, ver, seq, ts, interval, count = struct.unpack_from("<BBHIIHH", data, 0)
+    assert magic0 == 0xAA
+    assert magic1 == 0x55
+    assert ver == 1
+    assert count == 32
+    assert interval == 20
+
+    offset = 16
+    for _ in range(count):
+        ecg, ir, red, flags = struct.unpack_from("<HIIB", data, offset)
+        assert 0 <= ecg <= 4095
+        assert ir >= 200000
+        assert red >= 200000
+        assert flags & 0x01
+        offset += 11
+
+
+def test_mock_mqtt_event_publication():
+    sim = FirmwareSimulator()
+    client = sim.create_mock_publisher()
+    client.connect()
+
+    ok = sim.publish_event(client, "BOOT", "esp32_started")
+    assert ok is True
+
+    event_msg = client.published_messages[-1]
+    assert event_msg["topic"] == TOPIC_VITALS_EVENTS
+    payload = json.loads(event_msg["payload"])
+    assert payload["event"] == "BOOT"
+    assert payload["details"] == "esp32_started"
+    assert "ts" in payload
+
+
+def test_mock_mqtt_command_dispatch():
+    sim = FirmwareSimulator(include_dispenser=True)
+    client = sim.create_mock_publisher()
+    client.connect()
+
+    assert client.handle_command(TOPIC_CMD_DISPENSE, '{"cmd":"dispense","compartment":5}', sim) is True
+    assert sim.current_compartment == 5
+
+    assert client.handle_command(TOPIC_CMD_DISPENSE, '{"cmd":"home"}', sim) is True
+    assert sim.current_compartment == 0
+
+    assert client.handle_command(TOPIC_CMD_DISPENSE, '{"cmd":"stop"}', sim) is True
+    assert sim.dispenser_moving is False
+
+    sim.trigger_stall()
+    assert sim.dispenser_stalled is True
+    assert client.handle_command(TOPIC_CMD_DISPENSE, '{"cmd":"clear"}', sim) is True
+    assert sim.dispenser_stalled is False
+
+
+def test_telemetry_ring_buffer_semantics():
+    capacity = 10
+    queue = deque(maxlen=capacity)
+
+    for i in range(15):
+        if len(queue) == capacity:
+            queue.popleft()
+        queue.append(i)
+
+    assert len(queue) == 10
+    assert list(queue) == list(range(5, 15))
+
+    flushed = []
+    batch_size = 4
+    while queue and len(flushed) < batch_size:
+        flushed.append(queue.popleft())
+
+    assert flushed == [5, 6, 7, 8]
+    assert len(queue) == 6
+
+
+def test_telemetry_rate_limiter_logic():
+    interval_ms = 500
+    last_publish_ms = 0
+
+    def can_publish(now_ms: int) -> bool:
+        nonlocal last_publish_ms
+        if last_publish_ms == 0 or (now_ms - last_publish_ms) >= interval_ms:
+            last_publish_ms = now_ms
+            return True
+        return False
+
+    assert can_publish(100) is True
+    assert can_publish(200) is False
+    assert can_publish(550) is False
+    assert can_publish(600) is True
+    assert can_publish(700) is False
+    assert can_publish(1100) is True
+
 
 
