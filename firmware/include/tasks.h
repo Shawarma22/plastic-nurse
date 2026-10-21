@@ -37,6 +37,12 @@ void taskTemp(void* pvParameters);
 void taskDispense(void* pvParameters);
 void taskTelemetry(void* pvParameters);
 
+class NetworkManager;
+class MqttPublisher;
+
+NetworkManager& getNetworkManager();
+MqttPublisher& getMqttPublisher();
+
 inline void initSystemQueues() {
     if (xQueueSensorData == nullptr) {
         xQueueSensorData = xQueueCreate(SENSOR_QUEUE_DEPTH, sizeof(SensorPacket));
