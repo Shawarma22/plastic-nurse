@@ -44,6 +44,7 @@ class MqttIngestService:
         self.persisted_vitals_count = 0
         self.persisted_batches_count = 0
         self.persisted_events_count = 0
+        self.published_commands_count = 0
         self.active_session_uid: Optional[str] = None
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.client: Optional[mqtt.Client] = None
@@ -103,10 +104,46 @@ class MqttIngestService:
             "persisted_vitals_count": self.persisted_vitals_count,
             "persisted_batches_count": self.persisted_batches_count,
             "persisted_events_count": self.persisted_events_count,
+            "published_commands_count": self.published_commands_count,
             "vitals_queue_size": self.vitals_queue.qsize(),
             "waveform_queue_size": self.waveform_queue.qsize(),
             "events_queue_size": self.events_queue.qsize(),
         }
+
+    def publish_dispense_command(self, cmd: str, compartment: int = 0) -> bool:
+        cmd_lower = cmd.lower()
+        if cmd_lower not in ("dispense", "move", "home", "stop", "estop", "clear", "clear_stall"):
+            return False
+        if cmd_lower in ("dispense", "move") and (compartment < 0 or compartment > 13):
+            return False
+        if not self.is_connected() or not self.client:
+            return False
+        payload = {
+            "cmd": cmd_lower,
+            "compartment": compartment,
+            "ts": int(time.time() * 1000),
+        }
+        try:
+            info = self.client.publish(settings.MQTT_TOPIC_CMD_DISPENSE, json.dumps(payload), qos=1)
+            if info.rc == mqtt.MQTT_ERR_SUCCESS:
+                self.published_commands_count += 1
+                return True
+            return False
+        except Exception as exc:
+            logger.warning(f"Failed to publish dispense command: {exc}")
+            return False
+
+    def move_carousel(self, compartment: int) -> bool:
+        return self.publish_dispense_command("dispense", compartment)
+
+    def home_carousel(self) -> bool:
+        return self.publish_dispense_command("home", 0)
+
+    def stop_carousel(self) -> bool:
+        return self.publish_dispense_command("stop", 0)
+
+    def clear_carousel_stall(self) -> bool:
+        return self.publish_dispense_command("clear", 0)
 
     def _init_client(self) -> None:
         if hasattr(mqtt, "CallbackAPIVersion"):
