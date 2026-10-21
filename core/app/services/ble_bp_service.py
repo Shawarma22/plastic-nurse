@@ -130,6 +130,11 @@ class BleBloodPressureService:
             except Exception:
                 pass
         self._broadcast_telemetry(record_data)
+        try:
+            from app.services.alert_engine import alert_engine
+            alert_engine.evaluate_blood_pressure(record_data)
+        except Exception:
+            pass
         return record_data
 
     def flush_measurements_batch(self, limit: int = 25) -> int:

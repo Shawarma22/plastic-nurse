@@ -1,11 +1,16 @@
 import asyncio
+import json
 import time
 import uuid
 from collections import deque
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
+from sqlmodel import Session
 from app.config import settings
 from app.logger import logger
+from app.db.session import engine
+from app.db.models import Event
+from app.services.ws_manager import ws_manager
 
 
 class TelemetryAlertEngine:
@@ -31,6 +36,32 @@ class TelemetryAlertEngine:
     def _record_cooldown(self, parameter: str) -> None:
         self._last_alert_timestamps[parameter] = time.time()
 
+    def _dispatch_alert(self, alert: Dict[str, Any]) -> None:
+        if self.loop and self.loop.is_running():
+            try:
+                payload = {
+                    "type": "telemetry_alert",
+                    "alert": alert,
+                }
+                asyncio.run_coroutine_threadsafe(
+                    ws_manager.broadcast_telemetry(payload),
+                    self.loop,
+                )
+            except Exception as exc:
+                logger.debug(f"Failed to broadcast alert to websocket: {exc}")
+        try:
+            with Session(engine) as session:
+                record = Event(
+                    session_uid=alert.get("session_uid"),
+                    timestamp=datetime.now(timezone.utc),
+                    event_type="telemetry_alert",
+                    payload=json.dumps(alert),
+                )
+                session.add(record)
+                session.commit()
+        except Exception as exc:
+            logger.debug(f"Failed to persist alert event to database: {exc}")
+
     def create_alert(
         self,
         parameter: str,
@@ -54,6 +85,7 @@ class TelemetryAlertEngine:
         self._alerts_history.append(alert)
         self.total_alerts_count += 1
         logger.warning(f"Telemetry threshold alert: {message}")
+        self._dispatch_alert(alert)
         return alert
 
     def evaluate_vitals(self, vital: Dict[str, Any]) -> List[Dict[str, Any]]:

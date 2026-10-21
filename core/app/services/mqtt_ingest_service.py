@@ -292,6 +292,13 @@ class MqttIngestService:
             "droid_online": self.droid_online,
         }
         self._broadcast_telemetry(ws_payload)
+        try:
+            from app.services.alert_engine import alert_engine
+            eval_data = dict(parsed)
+            eval_data["session_uid"] = self.active_session_uid
+            alert_engine.evaluate_vitals(eval_data)
+        except Exception:
+            pass
 
     def _handle_raw_waveform_message(self, payload_bytes: bytes) -> None:
         parsed = WaveformBatchParser.unpack(payload_bytes)
