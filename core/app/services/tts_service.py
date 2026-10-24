@@ -1,6 +1,8 @@
 import hashlib
 import os
 import re
+import struct
+import time
 from enum import Enum
 from pathlib import Path
 import threading
@@ -103,3 +105,48 @@ class TtsService:
                 if current_clause:
                     chunks.append(" ".join(current_clause))
         return chunks if chunks else [cleaned]
+
+    def generate_mock_wav(self, duration_sec: float = 0.2, sample_rate: Optional[int] = None) -> bytes:
+        rate = sample_rate or self.config.TTS_SAMPLE_RATE
+        num_samples = int(rate * duration_sec)
+        data_bytes = b"\x00\x00" * num_samples
+        data_size = len(data_bytes)
+        chunk_size = 36 + data_size
+        header = struct.pack(
+            "<4sI4s4sIHHIIHH4sI",
+            b"RIFF",
+            chunk_size,
+            b"WAVE",
+            b"fmt ",
+            16,
+            1,
+            1,
+            rate,
+            rate * 2,
+            2,
+            16,
+            b"data",
+            data_size,
+        )
+        return header + data_bytes
+
+    def synthesize_mock(self, text: str) -> bytes:
+        cached = self.get_cached_audio(text, engine="mock")
+        if cached:
+            return cached
+        duration = max(0.1, min(3.0, len(text.split()) * 0.15))
+        wav_bytes = self.generate_mock_wav(duration_sec=duration)
+        self.cache_audio(text, wav_bytes, engine="mock")
+        return wav_bytes
+
+    def play_audio_mock(self, audio_bytes: bytes, stop_event: Optional[threading.Event] = None) -> bool:
+        self.set_state(AudioOutputState.PLAYING)
+        duration = min(0.3, len(audio_bytes) / (self.config.TTS_SAMPLE_RATE * 2))
+        start = time.time()
+        while time.time() - start < duration:
+            if stop_event and stop_event.is_set():
+                self.set_state(AudioOutputState.IDLE)
+                return False
+            time.sleep(0.02)
+        self.set_state(AudioOutputState.IDLE)
+        return True
