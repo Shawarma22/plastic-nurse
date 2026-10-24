@@ -1,7 +1,9 @@
 import hashlib
 import os
 import re
+import shutil
 import struct
+import subprocess
 import time
 from enum import Enum
 from pathlib import Path
@@ -150,3 +152,23 @@ class TtsService:
             time.sleep(0.02)
         self.set_state(AudioOutputState.IDLE)
         return True
+
+    def is_espeak_available(self) -> bool:
+        return bool(shutil.which("espeak-ng") or shutil.which("espeak"))
+
+    def synthesize_espeak(self, text: str) -> bytes:
+        cached = self.get_cached_audio(text, engine="espeak")
+        if cached:
+            return cached
+        binary = shutil.which("espeak-ng") or shutil.which("espeak")
+        if not binary:
+            raise RuntimeError("espeak binary not found on system PATH")
+        output_path = self.get_cache_path(text, engine="espeak")
+        cmd = [binary, "-v", self.config.ESPEAK_VOICE, "-w", str(output_path), text]
+        try:
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10.0, check=False)
+            if proc.returncode != 0 or not output_path.is_file():
+                raise RuntimeError(f"espeak synthesis failed with code {proc.returncode}: {proc.stderr.decode(errors='ignore')}")
+            return output_path.read_bytes()
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("espeak synthesis timed out") from exc
