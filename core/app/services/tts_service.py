@@ -1,9 +1,10 @@
 import hashlib
 import os
+import re
 from enum import Enum
 from pathlib import Path
 import threading
-from typing import Optional
+from typing import List, Optional
 from app.config import settings, Settings
 
 
@@ -62,3 +63,43 @@ class TtsService:
                 except OSError:
                     pass
         return count
+
+    def clean_text(self, text: str) -> str:
+        cleaned = re.sub(r"[\r\n\t]+", " ", text)
+        cleaned = re.sub(r"[^\w\s.,!?;:\'\"-]", "", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        return cleaned
+
+    def chunk_text(self, text: str, max_chunk_words: int = 25) -> List[str]:
+        cleaned = self.clean_text(text)
+        if not cleaned:
+            return []
+        raw_sentences = re.split(r"(?<=[.!?])\s+", cleaned)
+        chunks: List[str] = []
+        for sentence in raw_sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+            words = sentence.split()
+            if len(words) <= max_chunk_words:
+                chunks.append(sentence)
+            else:
+                clause_parts = re.split(r"(?<=[,;:])\s+", sentence)
+                current_clause: List[str] = []
+                current_word_count = 0
+                for part in clause_parts:
+                    part = part.strip()
+                    if not part:
+                        continue
+                    part_words = len(part.split())
+                    if current_word_count + part_words <= max_chunk_words:
+                        current_clause.append(part)
+                        current_word_count += part_words
+                    else:
+                        if current_clause:
+                            chunks.append(" ".join(current_clause))
+                        current_clause = [part]
+                        current_word_count = part_words
+                if current_clause:
+                    chunks.append(" ".join(current_clause))
+        return chunks if chunks else [cleaned]
