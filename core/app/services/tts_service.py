@@ -172,3 +172,45 @@ class TtsService:
             return output_path.read_bytes()
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError("espeak synthesis timed out") from exc
+
+    def is_piper_available(self) -> bool:
+        binary_ok = bool(shutil.which(self.config.PIPER_BINARY_PATH) or Path(self.config.PIPER_BINARY_PATH).is_file())
+        model_ok = Path(self.config.PIPER_MODEL_PATH).is_file()
+        return binary_ok and model_ok
+
+    def synthesize_piper(self, text: str) -> bytes:
+        cached = self.get_cached_audio(text, engine="piper")
+        if cached:
+            return cached
+        binary = shutil.which(self.config.PIPER_BINARY_PATH) or self.config.PIPER_BINARY_PATH
+        model_path = Path(self.config.PIPER_MODEL_PATH)
+        if not (shutil.which(str(binary)) or Path(str(binary)).is_file()):
+            raise RuntimeError(f"piper binary not found at {binary}")
+        if not model_path.is_file():
+            raise RuntimeError(f"piper onnx model not found at {model_path}")
+        output_path = self.get_cache_path(text, engine="piper")
+        cmd = [
+            str(binary),
+            "--model",
+            str(model_path),
+            "--output_file",
+            str(output_path),
+        ]
+        if self.config.PIPER_SPEAKER_ID is not None and self.config.PIPER_SPEAKER_ID > 0:
+            cmd.extend(["--speaker", str(self.config.PIPER_SPEAKER_ID)])
+        try:
+            proc = subprocess.run(
+                cmd,
+                input=text.encode("utf-8"),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=15.0,
+                check=False,
+            )
+            if proc.returncode != 0 or not output_path.is_file():
+                raise RuntimeError(
+                    f"piper synthesis failed with code {proc.returncode}: {proc.stderr.decode(errors='ignore')}"
+                )
+            return output_path.read_bytes()
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("piper synthesis timed out") from exc
