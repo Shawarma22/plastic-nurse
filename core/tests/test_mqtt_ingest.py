@@ -5,8 +5,8 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 from app.db.session import init_db, engine
-from app.db.models import Vital, WaveformBatchRecord, Event, DroidStatusLog
-from app.services.mqtt_ingest_service import MqttIngestService, MqttConnectionState
+from app.db.models import Vital, WaveformBatchRecord, Event
+from app.services.mqtt_ingest_service import MqttIngestService
 from app.services.waveform_parser import WaveformBatchParser
 
 

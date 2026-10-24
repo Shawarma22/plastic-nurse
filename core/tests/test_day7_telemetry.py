@@ -1,5 +1,3 @@
-import json
-import struct
 from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient

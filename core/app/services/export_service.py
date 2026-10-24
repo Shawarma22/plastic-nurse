@@ -1,7 +1,6 @@
 import csv
 import io
-from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from sqlmodel import Session, select
 from app.db.models import Session as DBSession, Vital, BloodPressureRecord, Event
 

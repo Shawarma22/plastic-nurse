@@ -8,6 +8,7 @@ from sqlmodel.pool import StaticPool
 os.environ["DROID_HAL"] = "mock"
 os.environ["SECRET_KEY"] = "testsecretkeymustbe32bytesminimumlongfortests"
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+os.environ["BCRYPT_ROUNDS"] = "4"
 
 from app.auth.security import get_password_hash, create_access_token
 from app.db.models import User
