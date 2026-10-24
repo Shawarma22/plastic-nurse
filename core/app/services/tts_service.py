@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import os
+import queue
 import re
 import shutil
 import struct
@@ -10,6 +11,7 @@ from enum import Enum
 from pathlib import Path
 import threading
 from typing import List, Optional, Tuple
+import uuid
 from app.config import settings, Settings
 
 logger = logging.getLogger("droid.tts")
@@ -33,6 +35,11 @@ class TtsService:
         os.makedirs(self.cache_dir, exist_ok=True)
         self.fallback_count: int = 0
         self.last_used_engine: str = self.engine_type
+        self._queue: queue.Queue[Tuple[str, str, Optional[str]]] = queue.Queue()
+        self._worker_thread: Optional[threading.Thread] = None
+        self._stop_worker_event = threading.Event()
+        self._interrupt_event = threading.Event()
+        self._is_running: bool = False
 
     def get_state(self) -> AudioOutputState:
         with self._lock:
@@ -41,6 +48,62 @@ class TtsService:
     def set_state(self, new_state: AudioOutputState) -> None:
         with self._lock:
             self.state = new_state
+
+    def start(self) -> None:
+        with self._lock:
+            if self._is_running:
+                return
+            self._is_running = True
+            self._stop_worker_event.clear()
+            self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
+            self._worker_thread.start()
+
+    def stop_worker(self) -> None:
+        with self._lock:
+            if not self._is_running:
+                return
+            self._is_running = False
+            self._stop_worker_event.set()
+            self._interrupt_event.set()
+        if self._worker_thread and self._worker_thread.is_alive():
+            self._worker_thread.join(timeout=2.0)
+
+    def enqueue_speech(self, text: str, engine: Optional[str] = None) -> str:
+        utterance_id = str(uuid.uuid4())
+        cleaned = self.clean_text(text)
+        if not cleaned:
+            return utterance_id
+        self._queue.put((utterance_id, cleaned, engine))
+        return utterance_id
+
+    def _worker_loop(self) -> None:
+        while not self._stop_worker_event.is_set():
+            try:
+                item = self._queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            utterance_id, text, engine = item
+            with self._lock:
+                self.current_utterance_id = utterance_id
+            self._interrupt_event.clear()
+            try:
+                chunks = self.chunk_text(text)
+                for chunk in chunks:
+                    if self._interrupt_event.is_set() or self._stop_worker_event.is_set():
+                        break
+                    audio_bytes, _ = self.synthesize(chunk, preferred_engine=engine)
+                    if self._interrupt_event.is_set() or self._stop_worker_event.is_set():
+                        break
+                    self.play_audio_mock(audio_bytes, stop_event=self._interrupt_event)
+            except Exception as e:
+                logger.error(f"Error processing utterance {utterance_id}: {e}")
+                self.set_state(AudioOutputState.ERROR)
+            finally:
+                with self._lock:
+                    self.current_utterance_id = None
+                if self.get_state() != AudioOutputState.ERROR:
+                    self.set_state(AudioOutputState.IDLE)
+                self._queue.task_done()
 
     def get_cache_path(self, text: str, engine: Optional[str] = None) -> Path:
         engine_name = engine or self.engine_type
