@@ -49,6 +49,10 @@ class TtsService:
         with self._lock:
             self.state = new_state
 
+    def is_busy(self) -> bool:
+        with self._lock:
+            return self.state in (AudioOutputState.SYNTHESIZING, AudioOutputState.PLAYING) or not self._queue.empty()
+
     def start(self) -> None:
         with self._lock:
             if self._is_running:
@@ -67,6 +71,41 @@ class TtsService:
             self._interrupt_event.set()
         if self._worker_thread and self._worker_thread.is_alive():
             self._worker_thread.join(timeout=2.0)
+
+    def stop(self) -> None:
+        self._interrupt_event.set()
+        with self._lock:
+            while not self._queue.empty():
+                try:
+                    self._queue.get_nowait()
+                    self._queue.task_done()
+                except (queue.Empty, ValueError):
+                    break
+            self.current_utterance_id = None
+            self.state = AudioOutputState.IDLE
+
+    def cancel_utterance(self, utterance_id: str) -> bool:
+        with self._lock:
+            if self.current_utterance_id == utterance_id:
+                self._interrupt_event.set()
+                self.current_utterance_id = None
+                self.state = AudioOutputState.IDLE
+                return True
+            items: List[Tuple[str, str, Optional[str]]] = []
+            found = False
+            while not self._queue.empty():
+                try:
+                    item = self._queue.get_nowait()
+                    if item[0] == utterance_id:
+                        found = True
+                        self._queue.task_done()
+                    else:
+                        items.append(item)
+                except queue.Empty:
+                    break
+            for rem in items:
+                self._queue.put(rem)
+            return found
 
     def enqueue_speech(self, text: str, engine: Optional[str] = None) -> str:
         utterance_id = str(uuid.uuid4())
