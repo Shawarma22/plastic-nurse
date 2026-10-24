@@ -49,6 +49,15 @@ class Settings(BaseSettings):
     ALERT_BP_DIASTOLIC_MIN: float = 50.0
     ALERT_CONFIDENCE_THRESHOLD: float = 0.50
     ALERT_COOLDOWN_SEC: float = 10.0
+    TTS_ENGINE: Literal["piper", "espeak", "mock"] = "mock"
+    PIPER_BINARY_PATH: str = "piper"
+    PIPER_MODEL_PATH: str = "models/piper/en_US-lessac-medium.onnx"
+    PIPER_SPEAKER_ID: int = 0
+    ESPEAK_VOICE: str = "en"
+    TTS_CACHE_DIR: str = ".cache/tts"
+    TTS_SAMPLE_RATE: int = 22050
+    TTS_VOLUME: float = 1.0
+    AUDIO_OUTPUT_DEVICE: str = "default"
     PIN_MOTOR_L_FWD: int = 17
     PIN_MOTOR_L_BWD: int = 27
     PIN_MOTOR_L_PWM: int = 18
