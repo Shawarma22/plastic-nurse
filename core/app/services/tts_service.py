@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import os
 import re
 import shutil
@@ -8,8 +9,10 @@ import time
 from enum import Enum
 from pathlib import Path
 import threading
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from app.config import settings, Settings
+
+logger = logging.getLogger("droid.tts")
 
 
 class AudioOutputState(str, Enum):
@@ -28,6 +31,8 @@ class TtsService:
         self.engine_type = self.config.TTS_ENGINE
         self.cache_dir = Path(self.config.TTS_CACHE_DIR)
         os.makedirs(self.cache_dir, exist_ok=True)
+        self.fallback_count: int = 0
+        self.last_used_engine: str = self.engine_type
 
     def get_state(self) -> AudioOutputState:
         with self._lock:
@@ -214,3 +219,37 @@ class TtsService:
             return output_path.read_bytes()
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError("piper synthesis timed out") from exc
+
+    def synthesize(self, text: str, preferred_engine: Optional[str] = None) -> Tuple[bytes, str]:
+        self.set_state(AudioOutputState.SYNTHESIZING)
+        cleaned = self.clean_text(text)
+        if not cleaned:
+            self.set_state(AudioOutputState.IDLE)
+            return b"", "none"
+        engine = preferred_engine or self.engine_type
+        if engine == "piper":
+            try:
+                data = self.synthesize_piper(cleaned)
+                self.last_used_engine = "piper"
+                self.set_state(AudioOutputState.IDLE)
+                return data, "piper"
+            except Exception as e:
+                logger.warning(f"Piper synthesis error: {e}, falling back to espeak")
+                with self._lock:
+                    self.fallback_count += 1
+                engine = "espeak"
+        if engine == "espeak":
+            try:
+                data = self.synthesize_espeak(cleaned)
+                self.last_used_engine = "espeak"
+                self.set_state(AudioOutputState.IDLE)
+                return data, "espeak"
+            except Exception as e:
+                logger.warning(f"Espeak synthesis error: {e}, falling back to mock")
+                with self._lock:
+                    self.fallback_count += 1
+                engine = "mock"
+        data = self.synthesize_mock(cleaned)
+        self.last_used_engine = "mock"
+        self.set_state(AudioOutputState.IDLE)
+        return data, "mock"
