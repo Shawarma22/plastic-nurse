@@ -415,3 +415,6 @@ class TtsService:
                 self.total_audio_seconds += sec
         self.set_state(AudioOutputState.IDLE)
         return data, used_engine
+
+
+tts_service = TtsService()
