@@ -13,7 +13,8 @@ from app.services.job_queue import job_queue_service
 from app.services.mqtt_ingest_service import mqtt_ingest_service
 from app.services.ble_bp_service import ble_bp_service
 from app.services.alert_engine import alert_engine
-from app.routers import auth, motors, door, camera, vitals, jobs, ws, perception, telemetry
+from app.services.tts_service import tts_service
+from app.routers import auth, motors, door, camera, vitals, jobs, ws, perception, telemetry, tts
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -49,12 +50,15 @@ async def lifespan(app: FastAPI):
     mqtt_ingest_service.set_event_loop(loop)
     ble_bp_service.set_event_loop(loop)
     alert_engine.set_event_loop(loop)
+    tts_service.set_event_loop(loop)
+    tts_service.start()
     if settings.MQTT_INGEST_ENABLED:
         mqtt_ingest_service.start()
     if settings.BLE_BP_ENABLED:
         ble_bp_service.start()
     logger.info(f"Medical Droid Core started in {settings.DROID_HAL} mode on port {settings.API_PORT}")
     yield
+    tts_service.stop_worker()
     if settings.BLE_BP_ENABLED:
         ble_bp_service.stop()
     if settings.MQTT_INGEST_ENABLED:
@@ -87,6 +91,7 @@ app.include_router(jobs.router)
 app.include_router(ws.router)
 app.include_router(perception.router)
 app.include_router(telemetry.router)
+app.include_router(tts.router)
 
 @app.get("/health", tags=["system"])
 def health_check():
