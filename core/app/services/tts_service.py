@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import logging
 import os
@@ -13,6 +14,7 @@ import threading
 from typing import List, Optional, Tuple
 import uuid
 from app.config import settings, Settings
+from app.services.ws_manager import ws_manager
 
 logger = logging.getLogger("droid.tts")
 
@@ -40,6 +42,24 @@ class TtsService:
         self._stop_worker_event = threading.Event()
         self._interrupt_event = threading.Event()
         self._is_running: bool = False
+        self.loop: Optional[asyncio.AbstractEventLoop] = None
+
+    def set_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        self.loop = loop
+
+    def _broadcast_tts_state(self) -> None:
+        if self.loop and self.loop.is_running():
+            payload = {
+                "type": "tts_state",
+                "state": self.state.value,
+                "current_utterance_id": self.current_utterance_id,
+                "queue_size": self._queue.qsize(),
+                "engine": self.last_used_engine,
+            }
+            try:
+                asyncio.run_coroutine_threadsafe(ws_manager.broadcast_state(payload), self.loop)
+            except Exception:
+                pass
 
     def get_state(self) -> AudioOutputState:
         with self._lock:
@@ -48,6 +68,7 @@ class TtsService:
     def set_state(self, new_state: AudioOutputState) -> None:
         with self._lock:
             self.state = new_state
+        self._broadcast_tts_state()
 
     def is_busy(self) -> bool:
         with self._lock:
@@ -83,6 +104,7 @@ class TtsService:
                     break
             self.current_utterance_id = None
             self.state = AudioOutputState.IDLE
+        self._broadcast_tts_state()
 
     def cancel_utterance(self, utterance_id: str) -> bool:
         with self._lock:
@@ -90,6 +112,7 @@ class TtsService:
                 self._interrupt_event.set()
                 self.current_utterance_id = None
                 self.state = AudioOutputState.IDLE
+                self._broadcast_tts_state()
                 return True
             items: List[Tuple[str, str, Optional[str]]] = []
             found = False
@@ -113,6 +136,7 @@ class TtsService:
         if not cleaned:
             return utterance_id
         self._queue.put((utterance_id, cleaned, engine))
+        self._broadcast_tts_state()
         return utterance_id
 
     def _worker_loop(self) -> None:
@@ -125,6 +149,7 @@ class TtsService:
             with self._lock:
                 self.current_utterance_id = utterance_id
             self._interrupt_event.clear()
+            self._broadcast_tts_state()
             try:
                 chunks = self.chunk_text(text)
                 for chunk in chunks:
@@ -143,6 +168,7 @@ class TtsService:
                 if self.get_state() != AudioOutputState.ERROR:
                     self.set_state(AudioOutputState.IDLE)
                 self._queue.task_done()
+                self._broadcast_tts_state()
 
     def get_cache_path(self, text: str, engine: Optional[str] = None) -> Path:
         engine_name = engine or self.engine_type
