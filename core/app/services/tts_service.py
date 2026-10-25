@@ -11,7 +11,7 @@ import time
 from enum import Enum
 from pathlib import Path
 import threading
-from typing import List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 import uuid
 from app.config import settings, Settings
 from app.services.ws_manager import ws_manager
@@ -37,6 +37,11 @@ class TtsService:
         os.makedirs(self.cache_dir, exist_ok=True)
         self.fallback_count: int = 0
         self.last_used_engine: str = self.engine_type
+        self.total_utterances: int = 0
+        self.total_characters: int = 0
+        self.total_audio_seconds: float = 0.0
+        self.total_synthesis_time_ms: float = 0.0
+        self.last_synthesis_time_ms: float = 0.0
         self._queue: queue.Queue[Tuple[str, str, Optional[str]]] = queue.Queue()
         self._worker_thread: Optional[threading.Thread] = None
         self._stop_worker_event = threading.Event()
@@ -73,6 +78,24 @@ class TtsService:
     def is_busy(self) -> bool:
         with self._lock:
             return self.state in (AudioOutputState.SYNTHESIZING, AudioOutputState.PLAYING) or not self._queue.empty()
+
+    def get_metrics(self) -> Dict[str, Any]:
+        with self._lock:
+            return {
+                "state": self.state.value,
+                "current_utterance_id": self.current_utterance_id,
+                "queue_size": self._queue.qsize(),
+                "total_utterances": self.total_utterances,
+                "total_characters": self.total_characters,
+                "total_audio_seconds": round(self.total_audio_seconds, 2),
+                "total_synthesis_time_ms": round(self.total_synthesis_time_ms, 2),
+                "last_synthesis_time_ms": round(self.last_synthesis_time_ms, 2),
+                "fallback_count": self.fallback_count,
+                "engine_type": self.engine_type,
+                "last_used_engine": self.last_used_engine,
+                "is_piper_available": self.is_piper_available(),
+                "is_espeak_available": self.is_espeak_available(),
+            }
 
     def start(self) -> None:
         with self._lock:
@@ -148,6 +171,8 @@ class TtsService:
             utterance_id, text, engine = item
             with self._lock:
                 self.current_utterance_id = utterance_id
+                self.total_utterances += 1
+                self.total_characters += len(text)
             self._interrupt_event.clear()
             self._broadcast_tts_state()
             try:
@@ -349,18 +374,19 @@ class TtsService:
             raise RuntimeError("piper synthesis timed out") from exc
 
     def synthesize(self, text: str, preferred_engine: Optional[str] = None) -> Tuple[bytes, str]:
+        start_time = time.perf_counter()
         self.set_state(AudioOutputState.SYNTHESIZING)
         cleaned = self.clean_text(text)
         if not cleaned:
             self.set_state(AudioOutputState.IDLE)
             return b"", "none"
         engine = preferred_engine or self.engine_type
+        data = b""
+        used_engine = "mock"
         if engine == "piper":
             try:
                 data = self.synthesize_piper(cleaned)
-                self.last_used_engine = "piper"
-                self.set_state(AudioOutputState.IDLE)
-                return data, "piper"
+                used_engine = "piper"
             except Exception as e:
                 logger.warning(f"Piper synthesis error: {e}, falling back to espeak")
                 with self._lock:
@@ -369,15 +395,23 @@ class TtsService:
         if engine == "espeak":
             try:
                 data = self.synthesize_espeak(cleaned)
-                self.last_used_engine = "espeak"
-                self.set_state(AudioOutputState.IDLE)
-                return data, "espeak"
+                used_engine = "espeak"
             except Exception as e:
                 logger.warning(f"Espeak synthesis error: {e}, falling back to mock")
                 with self._lock:
                     self.fallback_count += 1
                 engine = "mock"
-        data = self.synthesize_mock(cleaned)
-        self.last_used_engine = "mock"
+        if not data:
+            data = self.synthesize_mock(cleaned)
+            used_engine = "mock"
+        elapsed_ms = (time.perf_counter() - start_time) * 1000.0
+        with self._lock:
+            self.last_used_engine = used_engine
+            self.last_synthesis_time_ms = elapsed_ms
+            self.total_synthesis_time_ms += elapsed_ms
+            if len(data) > 44:
+                pcm_len = len(data) - 44
+                sec = pcm_len / (self.config.TTS_SAMPLE_RATE * 2)
+                self.total_audio_seconds += sec
         self.set_state(AudioOutputState.IDLE)
-        return data, "mock"
+        return data, used_engine
