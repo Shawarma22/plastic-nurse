@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, select
@@ -14,7 +15,8 @@ from app.services.mqtt_ingest_service import mqtt_ingest_service
 from app.services.ble_bp_service import ble_bp_service
 from app.services.alert_engine import alert_engine
 from app.services.tts_service import tts_service
-from app.routers import auth, motors, door, camera, vitals, jobs, ws, perception, telemetry, tts
+from app.services.protocol_engine import protocol_engine
+from app.routers import auth, motors, door, camera, vitals, jobs, ws, perception, telemetry, tts, protocol
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -52,12 +54,16 @@ async def lifespan(app: FastAPI):
     alert_engine.set_event_loop(loop)
     tts_service.set_event_loop(loop)
     tts_service.start()
+    protocol_engine.set_event_loop(loop)
+    proto_dir = Path(__file__).resolve().parent.parent / "protocols"
+    protocol_engine.load_protocols(proto_dir)
     if settings.MQTT_INGEST_ENABLED:
         mqtt_ingest_service.start()
     if settings.BLE_BP_ENABLED:
         ble_bp_service.start()
     logger.info(f"Medical Droid Core started in {settings.DROID_HAL} mode on port {settings.API_PORT}")
     yield
+    await protocol_engine.abort_protocol("System shutdown")
     tts_service.stop_worker()
     if settings.BLE_BP_ENABLED:
         ble_bp_service.stop()
@@ -92,6 +98,7 @@ app.include_router(ws.router)
 app.include_router(perception.router)
 app.include_router(telemetry.router)
 app.include_router(tts.router)
+app.include_router(protocol.router)
 
 @app.get("/health", tags=["system"])
 def health_check():
