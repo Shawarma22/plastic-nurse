@@ -6,6 +6,7 @@ from app.schemas.protocol import StepDefinition, ProtocolState
 from app.services.protocol_context import ProtocolExecutionContext
 from app.services.tts_service import tts_service
 from app.services.ble_bp_service import ble_bp_service
+from app.services.door_service import door_service
 
 
 class BaseStepHandler(ABC):
@@ -74,6 +75,63 @@ class MeasureStepHandler(BaseStepHandler):
 
         context.set_variable(f"{step.id}_measured", True)
         context.record_step(step.id, "measure", {"target_vital": target, "values": measured_values})
+        return step.default_next
+
+
+class BranchStepHandler(BaseStepHandler):
+    def _evaluate(self, left: Any, operator: str, right: Any) -> bool:
+        try:
+            if operator == "==":
+                return bool(left == right)
+            if operator == "!=":
+                return bool(left != right)
+            if operator == ">":
+                return float(left) > float(right)
+            if operator == "<":
+                return float(left) < float(right)
+            if operator == ">=":
+                return float(left) >= float(right)
+            if operator == "<=":
+                return float(left) <= float(right)
+            if operator == "in":
+                return left in right
+        except (TypeError, ValueError):
+            return False
+        return False
+
+    async def execute(self, step: StepDefinition, context: ProtocolExecutionContext) -> Optional[str]:
+        target_next = step.default_next
+        matched_condition = None
+
+        if step.conditions:
+            for cond in step.conditions:
+                var_val = context.get_variable(cond.variable)
+                if var_val is not None and self._evaluate(var_val, cond.operator, cond.value):
+                    target_next = cond.target_step
+                    matched_condition = {
+                        "variable": cond.variable,
+                        "operator": cond.operator,
+                        "value": cond.value,
+                        "target_step": cond.target_step,
+                    }
+                    break
+
+        context.record_step(
+            step.id,
+            "branch",
+            {"matched_condition": matched_condition, "target_step": target_next},
+        )
+        return target_next
+
+
+class DispenseStepHandler(BaseStepHandler):
+    async def execute(self, step: StepDefinition, context: ProtocolExecutionContext) -> Optional[str]:
+        item_id = step.item_id or "unspecified"
+        await door_service.open_door()
+        await asyncio.sleep(0.3)
+        await door_service.close_door()
+        context.set_variable(f"dispensed_{item_id}", True)
+        context.record_step(step.id, "dispense", {"item_id": item_id, "status": "completed"})
         return step.default_next
 
 
