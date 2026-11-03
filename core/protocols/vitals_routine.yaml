@@ -1,0 +1,49 @@
+metadata:
+  id: vitals_routine
+  name: Routine Vital Measurements
+  version: 1.0.0
+  description: Guided vital measurement acquisition with automated sensor reading
+  estimated_duration_sec: 60
+initial_step: step_intro
+steps:
+  - id: step_intro
+    type: prompt
+    text: We will now record your vital measurements. Please remain still.
+    default_next: step_measure_bp
+  - id: step_measure_bp
+    type: measure
+    target_vital: blood_pressure
+    timeout_sec: 25.0
+    default_next: step_check_bp
+  - id: step_check_bp
+    type: branch
+    conditions:
+      - variable: blood_pressure_systolic
+        operator: ">"
+        value: 140.0
+        target_step: step_high_bp_note
+    default_next: step_measure_spo2
+  - id: step_high_bp_note
+    type: prompt
+    text: Systolic measurement observed above 140 mmHg. A follow-up reading may be requested.
+    default_next: step_measure_spo2
+  - id: step_measure_spo2
+    type: measure
+    target_vital: pulse_oximeter
+    timeout_sec: 15.0
+    default_next: step_dispense_check
+  - id: step_dispense_check
+    type: branch
+    conditions:
+      - variable: requires_dispense
+        operator: "=="
+        value: true
+        target_step: step_dispense_item
+    default_next: step_routine_complete
+  - id: step_dispense_item
+    type: dispense
+    item_id: standard_pack_01
+    default_next: step_routine_complete
+  - id: step_routine_complete
+    type: finish
+    text: All vital measurements have been logged. You may now relax.

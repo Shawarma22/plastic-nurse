@@ -1,0 +1,23 @@
+metadata:
+  id: checkin
+  name: Patient Check-in Protocol
+  version: 1.0.0
+  description: Standard patient orientation and automated check-in flow
+  estimated_duration_sec: 45
+initial_step: step_greeting
+steps:
+  - id: step_greeting
+    type: prompt
+    text: Hello, welcome. Please follow the instructions on the screen to begin your check-in.
+    default_next: step_wait_confirm
+  - id: step_wait_confirm
+    type: wait
+    duration_sec: 3.0
+    default_next: step_verify_posture
+  - id: step_verify_posture
+    type: prompt
+    text: Please sit comfortably with your arm resting on the table.
+    default_next: step_finish
+  - id: step_finish
+    type: finish
+    text: Check-in completed. Thank you.
