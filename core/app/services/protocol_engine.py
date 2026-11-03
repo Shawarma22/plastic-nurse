@@ -14,6 +14,7 @@ from app.services.protocol_handlers import (
     DispenseStepHandler,
     FinishStepHandler,
 )
+from app.services.ws_manager import ws_manager
 
 logger = logging.getLogger("droid.protocol")
 
@@ -25,6 +26,7 @@ class ProtocolEngine:
         self._task: Optional[asyncio.Task] = None
         self._pause_event: asyncio.Event = asyncio.Event()
         self._pause_event.set()
+        self.loop: Optional[asyncio.AbstractEventLoop] = None
         self._handlers: Dict[StepType, BaseStepHandler] = {
             StepType.PROMPT: PromptStepHandler(),
             StepType.WAIT: WaitStepHandler(),
@@ -33,6 +35,22 @@ class ProtocolEngine:
             StepType.DISPENSE: DispenseStepHandler(),
             StepType.FINISH: FinishStepHandler(),
         }
+
+    def set_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        self.loop = loop
+
+    async def _broadcast_event(self, event_name: str, payload: Dict[str, Any]) -> None:
+        msg = {
+            "type": "protocol_event",
+            "event": event_name,
+            "protocol_id": self.active_context.protocol_id if self.active_context else None,
+            "execution_id": self.active_context.execution_id if self.active_context else None,
+            "payload": payload,
+        }
+        try:
+            await ws_manager.broadcast_state(msg)
+        except Exception:
+            pass
 
     def load_protocols(self, dir_path: Union[str, Path] = "protocols") -> int:
         loaded = protocol_parser.load_directory(dir_path)
@@ -76,6 +94,7 @@ class ProtocolEngine:
         self.active_context = context
         self._pause_event.set()
         context.set_state(ProtocolState.RUNNING)
+        await self._broadcast_event("protocol_started", {"protocol_id": protocol_id, "session_uid": context.session_uid})
         self._task = asyncio.create_task(self._run_execution(context, schema))
         return context
 
@@ -84,6 +103,7 @@ class ProtocolEngine:
             return False
         self._pause_event.clear()
         self.active_context.set_state(ProtocolState.PAUSED)
+        await self._broadcast_event("protocol_paused", {"current_step_id": self.active_context.current_step_id})
         return True
 
     async def resume_protocol(self) -> bool:
@@ -91,6 +111,7 @@ class ProtocolEngine:
             return False
         self.active_context.set_state(ProtocolState.RUNNING)
         self._pause_event.set()
+        await self._broadcast_event("protocol_resumed", {"current_step_id": self.active_context.current_step_id})
         return True
 
     async def abort_protocol(self, reason: Optional[str] = None) -> bool:
@@ -99,6 +120,7 @@ class ProtocolEngine:
         self._pause_event.set()
         self.active_context.error_message = reason or "Aborted by user request"
         self.active_context.set_state(ProtocolState.ABORTED)
+        await self._broadcast_event("protocol_aborted", {"reason": self.active_context.error_message})
         if self._task and not self._task.done():
             self._task.cancel()
         return True
@@ -132,26 +154,33 @@ class ProtocolEngine:
                 if not step:
                     context.error_message = f"Step '{next_step_id}' not found"
                     context.set_state(ProtocolState.ERROR)
+                    await self._broadcast_event("protocol_error", {"error": context.error_message})
                     break
 
+                await self._broadcast_event("step_entered", {"step_id": step.id, "step_type": step.type.value})
                 handler = self._handlers.get(step.type)
                 if not handler:
                     context.error_message = f"Handler for step type '{step.type}' not found"
                     context.set_state(ProtocolState.ERROR)
+                    await self._broadcast_event("protocol_error", {"error": context.error_message})
                     break
 
                 next_step_id = await handler.execute(step, context)
+                await self._broadcast_event("step_exited", {"step_id": step.id, "next_step_id": next_step_id})
 
             if context.state == ProtocolState.RUNNING:
                 context.current_step_id = None
                 context.set_state(ProtocolState.COMPLETED)
+                await self._broadcast_event("protocol_completed", {"session_uid": context.session_uid})
 
         except asyncio.CancelledError:
             context.set_state(ProtocolState.ABORTED)
+            await self._broadcast_event("protocol_aborted", {"reason": "Cancelled task"})
         except Exception as e:
             logger.error(f"Error executing protocol '{schema.metadata.id}': {e}")
             context.error_message = str(e)
             context.set_state(ProtocolState.ERROR)
+            await self._broadcast_event("protocol_error", {"error": str(e)})
 
 
 protocol_engine = ProtocolEngine()
